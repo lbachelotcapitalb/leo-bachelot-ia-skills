@@ -35,8 +35,8 @@ Puis ouvre `.claude/handoff.json` et confirme `ssh` / `path` avec l'utilisateur
 (ne devine pas l'hôte). Plusieurs machines = plusieurs entrées sous `remotes`.
 
 Champs clés : `wipBranch` (pattern, placeholders `{repo}` `{user}` `{date}`),
-`noDeployToBranches` (branches auto-déployées comme `main`+Netlify — le skill
-**refuse** d'y pousser du WIP), `handoffFile`, `remotes`, `defaultRemote`.
+`noDeployToBranches` (branches auto-déployées, ex. `main` qui déclenche un déploiement —
+le skill **refuse** d'y pousser du WIP), `handoffFile`, `remotes`, `defaultRemote`.
 
 ## Transmission des docs de la tâche (identifier + préconiser)
 Avant de partir, **inventorie ce dont la tâche a besoin** et vérifie que la machine
@@ -48,28 +48,38 @@ Lance le diagnostic automatique :
 node ~/.claude/skills/handoff/scripts/handoff.mjs check --to <remote>
 # ou sans config :  … check --ssh user@host [--repo <git-url>]
 ```
-Il sonde la cible canal par canal et **imprime des préconisations**. Grille de lecture :
+`check` sonde toujours les **canaux universels** d'un handoff git — accès au dépôt
+(`git ls-remote`), réseau et clé SSH de l'hôte git, `gh` CLI, présence de `node` —
+puis tout **canal additionnel que tu déclares** dans `.claude/handoff.json`. **Aucun
+fournisseur n'est codé en dur** : chacun décrit son propre stack.
 
-| Canal | Comment ça se transmet | Si la cible n'y a pas accès |
-|---|---|---|
-| **Code (GitHub)** | `push`/`pull` sur le remote partagé — le cœur du skill. | Deploy key du repo (alias `~/.ssh/config`) ou `gh auth login`. Sans ça, `in` échoue. |
-| **Supabase** | base cloud commune ; la cible se connecte via URL+clés. Schéma = **migrations commitées**. | Clés via `.env` du projet sur la cible, ou `npm i -g supabase`. |
-| **Netlify** | rien à transmettre : deploy auto au merge sur `main`. Build = `netlify.toml` commité. | Token seulement si la tâche modifie le dashboard. |
-| **Google Drive** | montable sur la cible via `rclone` (mount/sync). | Installer rclone, **ou** relocaliser les docs dans git / un bucket (Supabase Storage, R2). |
-| **iCloud** | ❌ **jamais** vers un serveur Linux (pas de client Apple). | **Relocaliser** les docs « iCloud-only » dans git / bucket / Drive **avant** le handoff. |
-| **Secrets** | jamais commités ; la cible lit ses `.env` locaux. | Pas de Bitwarden CLI sur le VPS → déposer le `.env` requis d'abord. |
+Déclare tes canaux sous `checkChannels` (tableau d'objets `{ name, cmd, okWhen?, recommend? }`).
+`cmd` est exécuté **sur la cible** et doit imprimer un mot d'état (`ok`, une version, `absent`…) ;
+sans `okWhen`, tout sauf `ko`/`absent`/vide est considéré bon. Exemples illustratifs (à adapter ou
+supprimer — ce ne sont PAS des défauts) :
+```jsonc
+"checkChannels": [
+  { "name": "Base de données — CLI", "cmd": "command -v psql >/dev/null && echo ok || echo absent",
+    "recommend": "Installe le client de ta base sur la cible, ou applique le schéma via les migrations commitées." },
+  { "name": "Stockage de fichiers",  "cmd": "command -v rclone >/dev/null && echo ok || echo absent",
+    "recommend": "Si la tâche dépend de fichiers d'un drive : monte-le (rclone), ou relocalise-les dans git / un bucket." },
+  { "name": "Secrets (coffre CLI)",  "cmd": "command -v op >/dev/null || command -v bw >/dev/null && echo ok || echo absent",
+    "recommend": "Pas de CLI de coffre sur la cible : les secrets doivent venir d'un .env déposé (voir le skill vault-secrets)." }
+]
+```
 
-Règle : **tout doc qui ne vit que dans iCloud (ou un drive non monté sur la cible)
-doit être relocalisé avant le `out`** — sinon le `claude` distant ne pourra pas le lire.
-Si `check` remonte un canal manquant pour la tâche, **préconise le correctif** (le
-montrer, pas l'appliquer en douce) avant de poursuivre.
+Règle générale (vendor-neutre) : **tout document qui ne vit que dans un stockage non monté sur la
+cible (cloud sans client local, partage local) doit être relocalisé — git, bucket — AVANT le `out`**,
+sinon le `claude` distant ne pourra pas le lire. Si `check` remonte un canal manquant pour la tâche,
+**préconise le correctif** (le montrer, pas l'appliquer en douce) avant de poursuivre.
 
 ## Procédure — DÉPART (déléguer le travail)
 Le point délicat n'est pas git, c'est le **brief**. Le `claude` distant repart
 sans contexte : la qualité de la reprise dépend entièrement de `HANDOFF.md`.
 
 0. **`check` la cible** (section ci-dessus) si la tâche touche autre chose que le code
-   (Supabase, Drive, secrets…). Relocalise / provisionne ce qui manque avant de continuer.
+   (base de données, stockage de fichiers, secrets…). Relocalise / provisionne ce qui manque
+   avant de continuer.
 1. **Écris `HANDOFF.md` à la racine du repo** avant tout. Sois concret et bref :
    - **Objectif** : ce qu'on cherche à faire (1-2 phrases).
    - **Fait** : ce qui est déjà en place dans ce WIP.
@@ -115,7 +125,9 @@ Le retour (VPS → Mac) est strictement symétrique : un `out` depuis le VPS, un
 - `init` — crée `.claude/handoff.json`.
 - `out [--to <remote>] [-m "msg"] [--exec]` — pousse le WIP + commande de reprise (`--exec` lance le SSH directement).
 - `in [<branche>] [--from <remote>]` — récupère le WIP + affiche le brief.
-- `check [--to <remote>] [--ssh user@host] [--repo <url>]` — sonde les canaux de transmission de la cible (GitHub/Supabase/Netlify/Drive/secrets) + préconise. iCloud toujours marqué exclu.
+- `delegate --task "…" [--to <remote>] [--max-turns N]` — pousse le WIP + lance un agent autonome (détaché) sur la cible.
+- `delegate-status [--to <remote>]` — état de l'agent distant (en cours / terminé + extrait de log).
+- `check [--to <remote>] [--ssh user@host] [--repo <url>]` — sonde les canaux universels (accès dépôt, hôte git, gh, node) + les canaux additionnels déclarés dans `checkChannels`, puis préconise.
 - `status` — branche courante, branche WIP cible, remotes connus.
 
 Tout passe par `scripts/handoff.mjs` (Node, zéro dépendance).

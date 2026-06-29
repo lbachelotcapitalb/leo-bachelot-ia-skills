@@ -290,18 +290,24 @@ function cmdIn(root, cfg, flags) {
 }
 
 // ---------- check (diagnostic des canaux de transmission sur la machine cible) ----------
-// Sonde la cible et dit, canal par canal, si les docs/déps de la tâche peuvent y être
-// transmis. iCloud est TOUJOURS marqué exclu (pas de client Linux). Produit des préconisations.
+// Sonde la cible : d'abord les canaux UNIVERSELS d'un handoff git (git, gh, accès au dépôt, node),
+// puis les canaux ADDITIONNELS que l'utilisateur déclare dans cfg.checkChannels. AUCUN fournisseur
+// n'est codé en dur — chacun décrit son propre stack (base, déploiement, stockage, secrets…).
 function cmdCheck(root, flags) {
+  const cfg = loadConfig(root);
   let sshTarget = flags.ssh, label = flags.ssh;
   if (!sshTarget) {
-    const remote = resolveRemote(loadConfig(root), flags.to);
+    const remote = resolveRemote(cfg, flags.to);
     if (!remote) die('Aucune cible : passe --ssh user@host ou configure un remote dans .claude/handoff.json.');
     sshTarget = remote.ssh; label = remote.key;
   }
   // repo de la tâche : la cible peut-elle le récupérer ? (origin du repo courant par défaut)
   let originUrl = flags.repo || '';
   if (!originUrl) { try { originUrl = sh('git remote get-url origin'); } catch {} }
+
+  // Canaux additionnels, 100 % softcodés. Chaque entrée : { name, cmd, okWhen?, recommend? }.
+  // `cmd` est exécuté sur la cible et doit imprimer un mot d'état (ex. "ok", une version, "absent").
+  const channels = Array.isArray(cfg.checkChannels) ? cfg.checkChannels : [];
 
   const probe = [
     `emit(){ printf '%s=%s\\n' "$1" "$2"; }`,
@@ -313,13 +319,8 @@ function cmdCheck(root, flags) {
     originUrl
       ? `git ls-remote ${JSON.stringify(originUrl)} HEAD >/dev/null 2>&1 && emit REPO_ACCESS ok || emit REPO_ACCESS ko`
       : `emit REPO_ACCESS skip`,
-    `if command -v supabase >/dev/null; then emit SUPABASE_CLI "$(supabase --version 2>/dev/null | head -1)"; else emit SUPABASE_CLI absent; fi`,
-    `curl -s -o /dev/null --max-time 8 https://api.supabase.com && emit SUPABASE_NET ok || emit SUPABASE_NET ko`,
-    `if command -v netlify >/dev/null; then emit NETLIFY_CLI "$(netlify --version 2>/dev/null | head -1)"; else emit NETLIFY_CLI absent; fi`,
-    `curl -s -o /dev/null --max-time 8 https://api.netlify.com && emit NETLIFY_NET ok || emit NETLIFY_NET ko`,
-    `if command -v rclone >/dev/null; then emit RCLONE present; emit RCLONE_REMOTES "$(rclone listremotes 2>/dev/null | paste -sd, -)"; else emit RCLONE absent; emit RCLONE_REMOTES ""; fi`,
-    `command -v bw >/dev/null && emit BW present || emit BW absent`,
-    `command -v node >/dev/null && emit NODE "$(node --version 2>/dev/null)" || emit NODE absent`
+    `command -v node >/dev/null && emit NODE "$(node --version 2>/dev/null)" || emit NODE absent`,
+    ...channels.map((c, i) => `emit CH${i} "$(${c.cmd} 2>/dev/null || echo ko)"`)
   ].join('\n');
 
   let raw;
@@ -330,38 +331,39 @@ function cmdCheck(root, flags) {
 
   const Y = '✅', W = '⚠️ ', N = '❌';
   console.log(`\n🔍 Canaux de transmission — cible « ${label} » (${sshTarget})\n`);
-  const line = (icon, name, detail) => console.log(`  ${icon} ${name.padEnd(24)} ${detail}`);
+  const line = (icon, name, detail) => console.log(`  ${icon} ${String(name).padEnd(26)} ${detail}`);
 
-  if (m.REPO_ACCESS === 'ok') line(Y, 'GitHub — ce repo', 'récupérable (git ls-remote OK)');
-  else if (m.REPO_ACCESS === 'ko') line(N, 'GitHub — ce repo', `INACCESSIBLE — ${originUrl} (clé/credential manquant)`);
-  else line(W, 'GitHub — ce repo', 'non testé (pas d\'origin local)');
-  line(m.GITHUB_NET === 'ok' ? Y : N, 'GitHub — réseau', m.GITHUB_NET === 'ok' ? 'joignable' : 'injoignable');
-  line(m.GITHUB_SSH === 'ok' ? Y : W, 'GitHub — clé SSH gén.', m.GITHUB_SSH === 'ok' ? 'authentifiée' : 'pas de clé git@github.com générale');
+  // --- canaux universels (tout handoff git) ---
+  if (m.REPO_ACCESS === 'ok') line(Y, 'Dépôt (ce repo git)', 'récupérable (git ls-remote OK)');
+  else if (m.REPO_ACCESS === 'ko') line(N, 'Dépôt (ce repo git)', `INACCESSIBLE — ${originUrl} (clé/credential manquant)`);
+  else line(W, 'Dépôt (ce repo git)', 'non testé (pas d\'origin local)');
+  line(m.GITHUB_NET === 'ok' ? Y : N, 'Hôte git — réseau', m.GITHUB_NET === 'ok' ? 'joignable' : 'injoignable');
+  line(m.GITHUB_SSH === 'ok' ? Y : W, 'Hôte git — clé SSH', m.GITHUB_SSH === 'ok' ? 'authentifiée' : 'pas de clé SSH générale');
   line(m.GH === 'ok' ? Y : W, 'gh CLI', m.GH === 'ok' ? 'authentifié' : (m.GH === 'unauth' ? 'présent, non authentifié' : 'absent'));
-  line(m.SUPABASE_NET === 'ok' ? Y : N, 'Supabase — réseau', m.SUPABASE_NET === 'ok' ? 'joignable' : 'injoignable');
-  line(m.SUPABASE_CLI && m.SUPABASE_CLI !== 'absent' ? Y : W, 'Supabase — CLI', m.SUPABASE_CLI && m.SUPABASE_CLI !== 'absent' ? m.SUPABASE_CLI : 'absent (clés via .env du projet)');
-  line(m.NETLIFY_NET === 'ok' ? Y : N, 'Netlify — réseau', m.NETLIFY_NET === 'ok' ? 'joignable' : 'injoignable');
-  line(m.NETLIFY_CLI && m.NETLIFY_CLI !== 'absent' ? Y : W, 'Netlify — CLI', m.NETLIFY_CLI && m.NETLIFY_CLI !== 'absent' ? m.NETLIFY_CLI : 'absent (deploy via merge sur main)');
-  const remotes = (m.RCLONE_REMOTES || '').trim();
-  if (m.RCLONE === 'present') line(remotes ? Y : W, 'Google Drive (rclone)', remotes ? `remotes: ${remotes}` : 'rclone présent, aucun remote');
-  else line(N, 'Google Drive (rclone)', 'rclone absent — pas de Drive monté');
-  line(m.BW === 'present' ? Y : W, 'Bitwarden CLI', m.BW === 'present' ? 'présent' : 'absent (secrets via .env locaux)');
   line(m.NODE && m.NODE !== 'absent' ? Y : N, 'node (handoff.mjs)', m.NODE && m.NODE !== 'absent' ? m.NODE : 'absent');
-  line(N, 'iCloud', 'non supporté sur Linux — relocalise les docs (git / bucket / Drive)');
+
+  // --- canaux additionnels déclarés par l'utilisateur ---
+  const channelGood = (c, v) => {
+    if (c.okWhen !== undefined) return [].concat(c.okWhen).includes(v);
+    return !!v && v !== 'ko' && v !== 'absent';
+  };
+  channels.forEach((c, i) => {
+    const v = m[`CH${i}`] || '';
+    line(channelGood(c, v) ? Y : W, c.name || `canal ${i + 1}`, v || '—');
+  });
 
   const rec = [];
   if (m.REPO_ACCESS === 'ko')
-    rec.push(`Repo INACCESSIBLE côté cible : le « in » échouera. Ajoute une deploy key (ssh-keygen + alias dans ~/.ssh/config + clé sur le repo GitHub) OU installe gh puis « gh auth login ».`);
-  if (m.RCLONE === 'absent')
-    rec.push(`Si la tâche dépend de fichiers Google Drive : installe rclone (« curl https://rclone.org/install.sh | sudo bash ») + « rclone config » ; sinon relocalise ces docs dans le repo ou un bucket (Supabase Storage / R2).`);
-  if (m.SUPABASE_CLI === 'absent')
-    rec.push(`Migrations Supabase : « npm i -g supabase » sur la cible, ou applique-les via le .env du projet déjà présent.`);
-  if (m.BW === 'absent')
-    rec.push(`Pas de Bitwarden CLI sur la cible : les secrets doivent venir des .env déjà déposés, pas du coffre.`);
-  rec.push(`iCloud n'est jamais un canal vers ce serveur : tout doc « iCloud-only » doit être relocalisé AVANT le handoff.`);
+    rec.push(`Dépôt INACCESSIBLE côté cible : le « in » échouera. Ajoute une deploy key (ssh-keygen + alias dans ~/.ssh/config + clé sur le repo) OU installe gh puis « gh auth login ».`);
+  channels.forEach((c, i) => {
+    if (!channelGood(c, m[`CH${i}`] || '') && c.recommend) rec.push(c.recommend);
+  });
+  rec.push(`Tout document qui ne vit que dans un stockage non monté sur la cible (cloud sans client, partage local) doit être relocalisé (git / bucket) AVANT le handoff.`);
 
-  console.log(`\n📋 Préconisations :`);
-  rec.forEach((r, i) => console.log(`  ${i + 1}. ${r}`));
+  if (rec.length) {
+    console.log(`\n📋 Préconisations :`);
+    rec.forEach((r, i) => console.log(`  ${i + 1}. ${r}`));
+  }
   console.log('');
 }
 

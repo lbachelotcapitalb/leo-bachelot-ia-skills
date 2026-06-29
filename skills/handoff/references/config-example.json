@@ -12,12 +12,21 @@
       "resumePrompt": "Lis HANDOFF.md à la racine du repo et reprends le travail décrit. Vérifie le build avant de continuer."
     }
   },
+  "checkChannels": [
+    {
+      "name": "Base de données — CLI",
+      "cmd": "command -v psql >/dev/null && echo ok || echo absent",
+      "okWhen": "ok",
+      "recommend": "Installe le client de ta base sur la cible, ou applique le schéma via les migrations commitées."
+    }
+  ],
   "_doc": {
     "wipBranch": "Pattern de la branche de travail. Placeholders : {repo} (nom du dossier), {user} (git user.name), {date} (YYYYMMDD).",
     "protectedBranches": "Branches sur lesquelles le skill refuse de pousser du WIP.",
-    "noDeployToBranches": "Branches auto-déployées (ex. main + Netlify) — jamais de WIP dessus.",
+    "noDeployToBranches": "Branches auto-déployées (ex. main qui déclenche un déploiement) — jamais de WIP dessus.",
     "handoffFile": "Fichier de brief écrit avant le départ et lu à l'arrivée.",
     "remotes": "Machines cibles. Chaque entrée : ssh (user@host), path (chemin du repo distant), claudeBin (binaire claude, défaut 'claude'), resumePrompt (prompt de reprise).",
-    "defaultRemote": "Remote utilisé si --to n'est pas précisé."
+    "defaultRemote": "Remote utilisé si --to n'est pas précisé.",
+    "checkChannels": "OPTIONNEL. Canaux additionnels sondés par `check`, 100% softcodés (aucun fournisseur en dur). Chaque entrée : name (libellé), cmd (commande exécutée SUR LA CIBLE, doit imprimer un mot d'état : ok / version / absent), okWhen (valeur(s) considérée(s) bonnes ; défaut : tout sauf ko/absent/vide), recommend (préconisation affichée si le canal n'est pas bon). Exemple ci-dessus à adapter ou supprimer."
   }
 }
