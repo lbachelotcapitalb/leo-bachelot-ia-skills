@@ -1,0 +1,87 @@
+{
+  "$comment": "Machine-readable index of the skills in this repo. An AI browsing the repo can parse this to recommend the right skill. The authoritative trigger for each skill is the `description` in its SKILL.md frontmatter; this index summarizes it for selection.",
+  "repo": "leo-bachelot-ia-skills",
+  "skillsDir": "skills",
+  "install": "Copy a skill folder into ~/.claude/skills/ (global) or <project>/.claude/skills/ (per-project). Claude Code auto-discovers it.",
+  "skills": [
+    {
+      "name": "deck-builder",
+      "path": "skills/deck-builder",
+      "category": "documents",
+      "summary": "Build or restructure polished, on-brand PowerPoint (.pptx) decks programmatically, with enforced layout/design rules, vector SVG icons, and a render-to-PNG self-check.",
+      "useWhen": ["creating a pitch deck or presentation", "fixing slides that feel empty, repetitive, or inconsistent", "de-cluttering or restructuring a deck"],
+      "skipWhen": "you only need to read or extract content from a .pptx (use the base `pptx` skill)",
+      "language": ["Python"],
+      "deps": ["python-pptx", "Pillow", "rsvg-convert (icons)", "LibreOffice + poppler (faithful render, optional)"],
+      "platform": "cross-platform",
+      "pairsWith": [],
+      "triggers": ["build a deck", "pitch deck", "redesign slides", "fix slide layout", "presentation"]
+    },
+    {
+      "name": "review-contrib",
+      "path": "skills/review-contrib",
+      "category": "collaboration",
+      "summary": "Maintainer-side: audit, test and merge a collaborator's commit/branch/PR (often from a fork) safely, in an isolated worktree, never touching main.",
+      "useWhen": ["someone pushed a commit/branch/PR you need to adopt", "you maintain a repo where main is production"],
+      "skipWhen": "you are the one writing the contribution (use `contribuer`)",
+      "language": ["bash"],
+      "deps": ["git >= 2.38", "gh CLI"],
+      "platform": "cross-platform",
+      "pairsWith": ["contribuer"],
+      "triggers": ["review this PR", "a collaborator pushed a commit", "audit this contribution", "adopt this branch", "merge a fork"]
+    },
+    {
+      "name": "contribuer",
+      "path": "skills/contribuer",
+      "category": "collaboration",
+      "summary": "Contributor-side mirror of review-contrib: prepare a clean, adoptable PR to a repo you don't maintain — sync the fork, respect the project's immutable rules & conventions, pass its gate, open a small PR.",
+      "useWhen": ["you start coding a feature or fix on someone else's repo", "you want your PR to be adopted fast"],
+      "skipWhen": "you are the maintainer reviewing others' work (use `review-contrib`)",
+      "language": ["bash"],
+      "deps": ["git", "gh CLI"],
+      "platform": "cross-platform",
+      "pairsWith": ["review-contrib"],
+      "triggers": ["contribute a fix", "open a clean PR", "make a pull request to this repo"]
+    },
+    {
+      "name": "autocli-password",
+      "path": "skills/autocli-password",
+      "category": "secrets",
+      "summary": "Run a CLI command that needs a secret only the user knows via a native hidden-input dialog piped straight into the command. The secret stays in RAM — never in chat, history, or on disk. Optional ssh-agent-style RAM cache.",
+      "useWhen": ["a single command blocks on a credential (decrypt a vault, SSH passphrase, sudo, CLI login)"],
+      "skipWhen": "you need many secrets at runtime or to replace .env (use `vault-secrets`)",
+      "language": ["bash", "node"],
+      "deps": ["bash", "node (optional, for the RAM cache)"],
+      "platform": "macOS / Linux dialogs, TTY fallback",
+      "pairsWith": ["vault-secrets"],
+      "triggers": ["this needs my password", "decrypt the vault", "deploy needs a passphrase", "don't paste the secret"]
+    },
+    {
+      "name": "vault-secrets",
+      "path": "skills/vault-secrets",
+      "category": "secrets",
+      "summary": "Choose & configure a queryable secrets manager and use it in place of .env: a provider-agnostic façade (vault.sh) to store secrets without pasting them and inject them at runtime.",
+      "useWhen": ["getting secrets out of .env files", "choosing/wiring a password manager into scripts or CI", "storing an API key or token safely"],
+      "skipWhen": "you just need one interactive secret for one command (use `autocli-password`)",
+      "language": ["bash", "node"],
+      "deps": ["bash", "one vault CLI (bw / op / pass / keepassxc-cli / doppler / infisical)", "node (Bitwarden adapter)"],
+      "platform": "macOS / Linux",
+      "pairsWith": ["autocli-password"],
+      "providers": ["bitwarden", "1password", "pass", "keepassxc", "doppler", "infisical"],
+      "triggers": ["store this API key", "get secrets out of .env", "which password manager should I use", "replace dotenv"]
+    },
+    {
+      "name": "handoff",
+      "path": "skills/handoff",
+      "category": "workflow",
+      "summary": "Hand a Claude Code session between machines over git: a WIP commit on a safe branch + a HANDOFF.md brief + a ready-to-paste resume command. Optional autonomous remote agent and a config-driven target diagnostic. Softcoded per repo.",
+      "useWhen": ["continuing or delegating work on a VPS or another workstation", "moving a session between your laptop and a server"],
+      "skipWhen": "both ends already share a live workspace",
+      "language": ["node"],
+      "deps": ["node (zero external deps)", "git", "SSH"],
+      "platform": "cross-platform (remote target typically Linux)",
+      "pairsWith": ["autocli-password"],
+      "triggers": ["resume this on the VPS", "switch to my remote machine", "pick up the work from the server", "delegate this to the VPS"]
+    }
+  ]
+}
