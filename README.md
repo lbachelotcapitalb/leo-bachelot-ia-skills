@@ -17,6 +17,7 @@ it works on any project — not just mine.
 | **[autocli-password](skills/autocli-password/)** | Run a CLI command that needs a **secret only the user knows** — a native hidden-input dialog pipes it straight into the command. The secret stays in RAM, never on disk, never in history. Optional `ssh-agent`-style RAM cache. | Bash + Node (zero deps) |
 | **[vault-secrets](skills/vault-secrets/)** | Choose & configure a **queryable secrets manager** (Bitwarden, 1Password, pass, KeePassXC, Doppler, Infisical) and use it **in place of `.env`** — store secrets without pasting them, inject at runtime. Provider-agnostic façade. | Bash + a vault CLI |
 | **[handoff](skills/handoff/)** | Hand a Claude Code session **between machines** over git — commit WIP to a safe branch + a `HANDOFF.md` brief + a ready-to-paste resume command. Optional autonomous remote agent. Softcoded per repo. | Node (zero deps) + git/SSH |
+| **[contribuer](skills/contribuer/)** | Prepare a clean, **adoptable PR** to a repo you don't maintain — sync the fork, respect the project's immutable rules & conventions, pass its gate, open a small PR. The contributor-side mirror of `review-contrib`. | git + `gh` CLI |
 
 ## Install
 
