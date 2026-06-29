@@ -15,6 +15,7 @@ it works on any project — not just mine.
 | **[deck-builder](skills/deck-builder/)** | Build & restructure polished, on-brand **PowerPoint** decks programmatically — fill-the-space layout rules, vector SVG icons, a render-to-PNG self-check. Theme-agnostic. | Python (`python-pptx`, Pillow) |
 | **[review-contrib](skills/review-contrib/)** | Audit, test and merge a collaborator's **commit / branch / PR** (often from a fork) safely — conflict audit, isolated worktree review, automated gate, sub-agent code review. Never touches `main`. | git + `gh` CLI |
 | **[autocli-password](skills/autocli-password/)** | Run a CLI command that needs a **secret only the user knows** — a native hidden-input dialog pipes it straight into the command. The secret stays in RAM, never on disk, never in history. Optional `ssh-agent`-style RAM cache. | Bash + Node (zero deps) |
+| **[vault-secrets](skills/vault-secrets/)** | Choose & configure a **queryable secrets manager** (Bitwarden, 1Password, pass, KeePassXC, Doppler, Infisical) and use it **in place of `.env`** — store secrets without pasting them, inject at runtime. Provider-agnostic façade. | Bash + a vault CLI |
 
 ## Install
 
