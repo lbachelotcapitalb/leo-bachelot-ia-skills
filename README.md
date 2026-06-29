@@ -16,6 +16,7 @@ it works on any project — not just mine.
 | **[review-contrib](skills/review-contrib/)** | Audit, test and merge a collaborator's **commit / branch / PR** (often from a fork) safely — conflict audit, isolated worktree review, automated gate, sub-agent code review. Never touches `main`. | git + `gh` CLI |
 | **[autocli-password](skills/autocli-password/)** | Run a CLI command that needs a **secret only the user knows** — a native hidden-input dialog pipes it straight into the command. The secret stays in RAM, never on disk, never in history. Optional `ssh-agent`-style RAM cache. | Bash + Node (zero deps) |
 | **[vault-secrets](skills/vault-secrets/)** | Choose & configure a **queryable secrets manager** (Bitwarden, 1Password, pass, KeePassXC, Doppler, Infisical) and use it **in place of `.env`** — store secrets without pasting them, inject at runtime. Provider-agnostic façade. | Bash + a vault CLI |
+| **[handoff](skills/handoff/)** | Hand a Claude Code session **between machines** over git — commit WIP to a safe branch + a `HANDOFF.md` brief + a ready-to-paste resume command. Optional autonomous remote agent. Softcoded per repo. | Node (zero deps) + git/SSH |
 
 ## Install
 

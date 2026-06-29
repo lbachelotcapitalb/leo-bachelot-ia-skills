@@ -1,0 +1,23 @@
+{
+  "wipBranch": "handoff/wip-{repo}-{user}",
+  "protectedBranches": ["main", "master", "production"],
+  "noDeployToBranches": ["main", "master"],
+  "handoffFile": "HANDOFF.md",
+  "defaultRemote": "vps",
+  "remotes": {
+    "vps": {
+      "ssh": "user@your-server.example",
+      "path": "~/your-repo",
+      "claudeBin": "claude",
+      "resumePrompt": "Lis HANDOFF.md à la racine du repo et reprends le travail décrit. Vérifie le build avant de continuer."
+    }
+  },
+  "_doc": {
+    "wipBranch": "Pattern de la branche de travail. Placeholders : {repo} (nom du dossier), {user} (git user.name), {date} (YYYYMMDD).",
+    "protectedBranches": "Branches sur lesquelles le skill refuse de pousser du WIP.",
+    "noDeployToBranches": "Branches auto-déployées (ex. main + Netlify) — jamais de WIP dessus.",
+    "handoffFile": "Fichier de brief écrit avant le départ et lu à l'arrivée.",
+    "remotes": "Machines cibles. Chaque entrée : ssh (user@host), path (chemin du repo distant), claudeBin (binaire claude, défaut 'claude'), resumePrompt (prompt de reprise).",
+    "defaultRemote": "Remote utilisé si --to n'est pas précisé."
+  }
+}
