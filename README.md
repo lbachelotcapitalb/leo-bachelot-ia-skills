@@ -22,8 +22,8 @@ Skills live in `~/.claude/skills/` (global) or `<project>/.claude/skills/` (per-
 one(s) you want:
 
 ```bash
-git clone https://github.com/<your-username>/claude-skills.git
-cp -R claude-skills/skills/deck-builder ~/.claude/skills/
+git clone https://github.com/lbachelotcapitalb/leo-bachelot-ia-skills.git
+cp -R leo-bachelot-ia-skills/skills/deck-builder ~/.claude/skills/
 ```
 
 Claude Code picks them up automatically — no registration step. Trigger a skill by describing the
