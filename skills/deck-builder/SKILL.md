@@ -79,8 +79,8 @@ accent — uniform reads as intentional; arbitrary alternation reads as noise. U
 a second colour ONLY when it maps to something (a genuine two-sided split like
 MÉTIER vs TECH, an emphasis/CTA, a key figure, a transversal banner). Default:
 pick ONE structural accent (e.g. teal) and reserve the second (e.g. gold) for
-real emphasis. When in doubt, uniform. (Rule of thumb: a colour alternation must
-have a reason — otherwise make it uniform.)
+real emphasis. When in doubt, uniform. (Leo, repeatedly: "une alternance de
+couleur doit avoir une raison — sinon uniformise.")
 
 **Vary BY CHAPTER to fight monotony without breaking the line.** A deck where
 every slide is the SAME accent reads as heavy/repetitive; varying EVERY slide
@@ -247,8 +247,8 @@ defect to fix before handing back — exactly like sub-floor text (rule 4).
      content block under a header (TOC, feature list, centred grid). Catches VOID
      ASYMMETRY: the empty gap header→content must equal the gap content→slide
      bottom. It reports `{top_gap_in, bottom_gap_in, delta_in}`; a delta beyond
-     tol is a defect (e.g. a 0.83" top void vs 0.61" bottom void on a contents
-     slide). `vmeasure(prs, i)` gives the raw numbers. THE FIX — never hardcode
+     tol is a defect (Leo caught a 0.83" top void vs 0.61" bottom void on the
+     sommaire). `vmeasure(prs, i)` gives the raw numbers. THE FIX — never hardcode
      a content band (CT/CB) that ignores where the header ends: measure the
      header bottom, compute the block's true height, and position it with
      `place_block(header_bottom, slide_height, block_h, 0.5)` so the two voids are

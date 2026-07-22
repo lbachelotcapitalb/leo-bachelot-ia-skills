@@ -12,7 +12,7 @@ Workflow:
 Idempotent: pictures whose blip already has the extension are skipped, so you
 can rebuild a single slide and re-run embed_svgs without double-injecting.
 
-Generalised from a technique proven across production decks.
+Generalised from the technique proven on the Finengy deck.
 """
 import zipfile, re, shutil, os
 

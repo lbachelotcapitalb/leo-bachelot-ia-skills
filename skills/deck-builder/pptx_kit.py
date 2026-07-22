@@ -224,7 +224,7 @@ def vmeasure(prs, slide_index, header_band_in=1.5):
 def audit_vbalance(prs, tol_in=0.18, header_band_in=1.5):
     """Flag VOID ASYMMETRY: the empty gap between the header and the content
     block must equal the gap between the content block and the slide bottom edge
-    (a bigger void above the list than below it is a defect). For each slide
+    (Leo: a bigger void above the list than below it is a defect). For each slide
     this measures top_gap = first-content-top − header-bottom and bottom_gap =
     slide-bottom − last-content-bottom (text bottoms estimated, not the inflated
     textbox height), and flags |top_gap − bottom_gap| > tol. THE FIX: never

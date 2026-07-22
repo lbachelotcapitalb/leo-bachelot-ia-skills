@@ -160,8 +160,21 @@ ensure_bw() {
   local st; st="$(bw status 2>/dev/null | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{process.stdout.write(JSON.parse(s).status)}catch{process.stdout.write("")}})' || true)"
   [ "$st" = "unauthenticated" ] && die "Bitwarden non connecté. Fais d'abord : bw login"
   local mp; mp="$(prompt_secret "Mot de passe maître Bitwarden" "Bitwarden · unlock")"
-  BW_SESSION="$(printf '%s' "$mp" | bw unlock --raw 2>/dev/null)" ; unset mp
-  [ -n "$BW_SESSION" ] || die "unlock Bitwarden refusé (mauvais mot de passe ?)"
+  [ -n "$mp" ] || die "saisie vide — abandon."
+  # Déverrouillage robuste : le master arrive sur STDIN (jamais en argv), on teste raw/NFC/NFD
+  # (un master accentué peut arriver composé « é »=1 octet ou décomposé « e »+« ´ »=2 octets et
+  # Bitwarden compare octet-à-octet) via --passwordenv. ⚠️ Jamais `printf | bw unlock --raw` :
+  # le pipe stdin échoue en silence. Seul le jeton de session est imprimé.
+  BW_SESSION="$(printf '%s' "$mp" | node -e '
+    const { execFileSync } = require("node:child_process");
+    let raw = ""; process.stdin.on("data", d => raw += d).on("end", () => {
+      for (const m of [...new Set([raw, raw.normalize("NFC"), raw.normalize("NFD")])]) {
+        try { const s = execFileSync("bw", ["unlock","--passwordenv","BW_MASTER","--raw"],
+          { encoding: "utf8", env: { ...process.env, BW_MASTER: m } }).trim();
+          if (s) { process.stdout.write(s); break; } } catch {}
+      }
+    });')" ; unset mp
+  [ -n "$BW_SESSION" ] || die "unlock Bitwarden refusé (mot de passe maître ? formes raw/NFC/NFD testées)."
   export BW_SESSION
 }
 ensure_kp() {

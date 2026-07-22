@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # ask-secret.sh — collecte un secret via une fenêtre native à champ masqué et l'imprime sur stdout.
 #
-# Usage :   SECRET="$(scripts/ask-secret.sh "Passphrase du coffre" "coffre · rebuild")"
-#           VAULT_PASS="$SECRET" node build-vault.mjs rebuild ; unset SECRET VAULT_PASS
+# Usage :   SECRET="$(scripts/ask-secret.sh "Passphrase karto" "karto · rebuild")"
+#           CARTO_PASS="$SECRET" node karto-sync.mjs rebuild ; unset SECRET CARTO_PASS
 #
 # 3ᵉ argument optionnel = CLÉ DE CACHE. S'il est fourni ET que l'utilisateur choisit une durée
 # dans le sélecteur, le secret est gardé en RAM (agent éphémère, ≤ 1 h) et les appels suivants

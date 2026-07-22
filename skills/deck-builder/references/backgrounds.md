@@ -136,7 +136,7 @@ def lowpoly(base, edge, cols=11, rows=6, shade=7, edge_a=8, veil_a=95, seed=3):
     return img.convert('RGB')
 ```
 
-### Example (a dark-moodboard section)
+### Example (a Finengy-style dark moodboard)
 Prefer `plexus_edge` (centre-fade) over plain `plexus` for any section that
 carries text on the bare background — it returns a numpy array → wrap in
 `top_scrim(...)` then `Image.fromarray(...).save()`. `lowpoly` returns a PIL image.

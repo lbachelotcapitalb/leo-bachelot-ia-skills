@@ -12,8 +12,12 @@
 // hôtes SSH et chemins distants sont tous lus depuis la config du repo.
 
 import { execSync } from 'node:child_process';
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, copyFileSync, chmodSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const SKILL_DIR = join(dirname(fileURLToPath(import.meta.url)), '..');
+const ROADMAP_TPL = join(SKILL_DIR, 'references', 'roadmap');
 
 // ---------- utils ----------
 const sh = (cmd, opts = {}) =>
@@ -35,6 +39,16 @@ function parseFlags(argv) {
     else if (a === '--path') f.path = argv[++i];
     else if (a === '--task') f.task = argv[++i];
     else if (a === '--max-turns') f['max-turns'] = argv[++i];
+    else if (a === '--branch') f.branch = argv[++i];
+    else if (a === '--model') f.model = argv[++i];
+    else if (a === '--title') f.title = argv[++i];
+    else if (a === '--objectif') f.objectif = argv[++i];
+    else if (a === '--gate') f.gate = argv[++i];
+    else if (a === '--step') f.step = argv[++i];
+    else if (a === '--decision') f.decision = argv[++i];
+    else if (a === '--repo-path') f['repo-path'] = argv[++i];
+    else if (a === '--repo-ssh') f['repo-ssh'] = argv[++i];
+    else if (a === '--force') f.force = true;
     else f._.push(a);
   }
   return f;
@@ -131,10 +145,10 @@ function ensureWipPushed(root, cfg, wip, message) {
     info(`⚠️  ${handoffFile} introuvable — idéalement le brief (état + prochaines étapes) y est écrit AVANT.`);
 
   // ⚠️ Sauvegarde NON DESTRUCTIVE — on ne fait JAMAIS `git checkout <wip>`.
-  // Piège évité : une version qui bascule sur la branche WIP (checkout) pour y
-  // commiter, puis qu'un autre processus revienne sur main, laisse le working tree
-  // VIDÉ de tout le WIP non commité (il n'existe plus que sur la branche).
-  // Désormais : on commite sur la branche COURANTE, on pousse ce commit
+  // Bug du 23/06/2026 : l'ancienne version basculait sur la branche WIP (checkout)
+  // pour y commiter ; le setup « session nuit » revenait ensuite sur main, laissant
+  // le working tree VIDÉ de tout le WIP non commité (il n'existait plus que sur la
+  // branche). Désormais : on commite sur la branche COURANTE, on pousse ce commit
   // vers la branche WIP distante, puis on défait le commit local (reset --mixed) →
   // HEAD et working tree reviennent exactement à l'état d'avant, WIP intact et non
   // commité. La branche courante ne change jamais.
@@ -290,24 +304,18 @@ function cmdIn(root, cfg, flags) {
 }
 
 // ---------- check (diagnostic des canaux de transmission sur la machine cible) ----------
-// Sonde la cible : d'abord les canaux UNIVERSELS d'un handoff git (git, gh, accès au dépôt, node),
-// puis les canaux ADDITIONNELS que l'utilisateur déclare dans cfg.checkChannels. AUCUN fournisseur
-// n'est codé en dur — chacun décrit son propre stack (base, déploiement, stockage, secrets…).
+// Sonde la cible et dit, canal par canal, si les docs/déps de la tâche peuvent y être
+// transmis. iCloud est TOUJOURS marqué exclu (pas de client Linux). Produit des préconisations.
 function cmdCheck(root, flags) {
-  const cfg = loadConfig(root);
   let sshTarget = flags.ssh, label = flags.ssh;
   if (!sshTarget) {
-    const remote = resolveRemote(cfg, flags.to);
+    const remote = resolveRemote(loadConfig(root), flags.to);
     if (!remote) die('Aucune cible : passe --ssh user@host ou configure un remote dans .claude/handoff.json.');
     sshTarget = remote.ssh; label = remote.key;
   }
   // repo de la tâche : la cible peut-elle le récupérer ? (origin du repo courant par défaut)
   let originUrl = flags.repo || '';
   if (!originUrl) { try { originUrl = sh('git remote get-url origin'); } catch {} }
-
-  // Canaux additionnels, 100 % softcodés. Chaque entrée : { name, cmd, okWhen?, recommend? }.
-  // `cmd` est exécuté sur la cible et doit imprimer un mot d'état (ex. "ok", une version, "absent").
-  const channels = Array.isArray(cfg.checkChannels) ? cfg.checkChannels : [];
 
   const probe = [
     `emit(){ printf '%s=%s\\n' "$1" "$2"; }`,
@@ -319,8 +327,13 @@ function cmdCheck(root, flags) {
     originUrl
       ? `git ls-remote ${JSON.stringify(originUrl)} HEAD >/dev/null 2>&1 && emit REPO_ACCESS ok || emit REPO_ACCESS ko`
       : `emit REPO_ACCESS skip`,
-    `command -v node >/dev/null && emit NODE "$(node --version 2>/dev/null)" || emit NODE absent`,
-    ...channels.map((c, i) => `emit CH${i} "$(${c.cmd} 2>/dev/null || echo ko)"`)
+    `if command -v supabase >/dev/null; then emit SUPABASE_CLI "$(supabase --version 2>/dev/null | head -1)"; else emit SUPABASE_CLI absent; fi`,
+    `curl -s -o /dev/null --max-time 8 https://api.supabase.com && emit SUPABASE_NET ok || emit SUPABASE_NET ko`,
+    `if command -v netlify >/dev/null; then emit NETLIFY_CLI "$(netlify --version 2>/dev/null | head -1)"; else emit NETLIFY_CLI absent; fi`,
+    `curl -s -o /dev/null --max-time 8 https://api.netlify.com && emit NETLIFY_NET ok || emit NETLIFY_NET ko`,
+    `if command -v rclone >/dev/null; then emit RCLONE present; emit RCLONE_REMOTES "$(rclone listremotes 2>/dev/null | paste -sd, -)"; else emit RCLONE absent; emit RCLONE_REMOTES ""; fi`,
+    `command -v bw >/dev/null && emit BW present || emit BW absent`,
+    `command -v node >/dev/null && emit NODE "$(node --version 2>/dev/null)" || emit NODE absent`
   ].join('\n');
 
   let raw;
@@ -331,39 +344,38 @@ function cmdCheck(root, flags) {
 
   const Y = '✅', W = '⚠️ ', N = '❌';
   console.log(`\n🔍 Canaux de transmission — cible « ${label} » (${sshTarget})\n`);
-  const line = (icon, name, detail) => console.log(`  ${icon} ${String(name).padEnd(26)} ${detail}`);
+  const line = (icon, name, detail) => console.log(`  ${icon} ${name.padEnd(24)} ${detail}`);
 
-  // --- canaux universels (tout handoff git) ---
-  if (m.REPO_ACCESS === 'ok') line(Y, 'Dépôt (ce repo git)', 'récupérable (git ls-remote OK)');
-  else if (m.REPO_ACCESS === 'ko') line(N, 'Dépôt (ce repo git)', `INACCESSIBLE — ${originUrl} (clé/credential manquant)`);
-  else line(W, 'Dépôt (ce repo git)', 'non testé (pas d\'origin local)');
-  line(m.GITHUB_NET === 'ok' ? Y : N, 'Hôte git — réseau', m.GITHUB_NET === 'ok' ? 'joignable' : 'injoignable');
-  line(m.GITHUB_SSH === 'ok' ? Y : W, 'Hôte git — clé SSH', m.GITHUB_SSH === 'ok' ? 'authentifiée' : 'pas de clé SSH générale');
+  if (m.REPO_ACCESS === 'ok') line(Y, 'GitHub — ce repo', 'récupérable (git ls-remote OK)');
+  else if (m.REPO_ACCESS === 'ko') line(N, 'GitHub — ce repo', `INACCESSIBLE — ${originUrl} (clé/credential manquant)`);
+  else line(W, 'GitHub — ce repo', 'non testé (pas d\'origin local)');
+  line(m.GITHUB_NET === 'ok' ? Y : N, 'GitHub — réseau', m.GITHUB_NET === 'ok' ? 'joignable' : 'injoignable');
+  line(m.GITHUB_SSH === 'ok' ? Y : W, 'GitHub — clé SSH gén.', m.GITHUB_SSH === 'ok' ? 'authentifiée' : 'pas de clé git@github.com générale');
   line(m.GH === 'ok' ? Y : W, 'gh CLI', m.GH === 'ok' ? 'authentifié' : (m.GH === 'unauth' ? 'présent, non authentifié' : 'absent'));
+  line(m.SUPABASE_NET === 'ok' ? Y : N, 'Supabase — réseau', m.SUPABASE_NET === 'ok' ? 'joignable' : 'injoignable');
+  line(m.SUPABASE_CLI && m.SUPABASE_CLI !== 'absent' ? Y : W, 'Supabase — CLI', m.SUPABASE_CLI && m.SUPABASE_CLI !== 'absent' ? m.SUPABASE_CLI : 'absent (clés via .env du projet)');
+  line(m.NETLIFY_NET === 'ok' ? Y : N, 'Netlify — réseau', m.NETLIFY_NET === 'ok' ? 'joignable' : 'injoignable');
+  line(m.NETLIFY_CLI && m.NETLIFY_CLI !== 'absent' ? Y : W, 'Netlify — CLI', m.NETLIFY_CLI && m.NETLIFY_CLI !== 'absent' ? m.NETLIFY_CLI : 'absent (deploy via merge sur main)');
+  const remotes = (m.RCLONE_REMOTES || '').trim();
+  if (m.RCLONE === 'present') line(remotes ? Y : W, 'Google Drive (rclone)', remotes ? `remotes: ${remotes}` : 'rclone présent, aucun remote');
+  else line(N, 'Google Drive (rclone)', 'rclone absent — pas de Drive monté');
+  line(m.BW === 'present' ? Y : W, 'Bitwarden CLI', m.BW === 'present' ? 'présent' : 'absent (secrets via .env locaux)');
   line(m.NODE && m.NODE !== 'absent' ? Y : N, 'node (handoff.mjs)', m.NODE && m.NODE !== 'absent' ? m.NODE : 'absent');
-
-  // --- canaux additionnels déclarés par l'utilisateur ---
-  const channelGood = (c, v) => {
-    if (c.okWhen !== undefined) return [].concat(c.okWhen).includes(v);
-    return !!v && v !== 'ko' && v !== 'absent';
-  };
-  channels.forEach((c, i) => {
-    const v = m[`CH${i}`] || '';
-    line(channelGood(c, v) ? Y : W, c.name || `canal ${i + 1}`, v || '—');
-  });
+  line(N, 'iCloud', 'non supporté sur Linux — relocalise les docs (git / bucket / Drive)');
 
   const rec = [];
   if (m.REPO_ACCESS === 'ko')
-    rec.push(`Dépôt INACCESSIBLE côté cible : le « in » échouera. Ajoute une deploy key (ssh-keygen + alias dans ~/.ssh/config + clé sur le repo) OU installe gh puis « gh auth login ».`);
-  channels.forEach((c, i) => {
-    if (!channelGood(c, m[`CH${i}`] || '') && c.recommend) rec.push(c.recommend);
-  });
-  rec.push(`Tout document qui ne vit que dans un stockage non monté sur la cible (cloud sans client, partage local) doit être relocalisé (git / bucket) AVANT le handoff.`);
+    rec.push(`Repo INACCESSIBLE côté cible : le « in » échouera. Ajoute une deploy key (ssh-keygen + alias dans ~/.ssh/config + clé sur le repo GitHub) OU installe gh puis « gh auth login ».`);
+  if (m.RCLONE === 'absent')
+    rec.push(`Si la tâche dépend de fichiers Google Drive : installe rclone (« curl https://rclone.org/install.sh | sudo bash ») + « rclone config » ; sinon relocalise ces docs dans le repo ou un bucket (Supabase Storage / R2).`);
+  if (m.SUPABASE_CLI === 'absent')
+    rec.push(`Migrations Supabase : « npm i -g supabase » sur la cible, ou applique-les via le .env du projet déjà présent.`);
+  if (m.BW === 'absent')
+    rec.push(`Pas de Bitwarden CLI sur la cible : les secrets doivent venir des .env déjà déposés, pas du coffre.`);
+  rec.push(`iCloud n'est jamais un canal vers ce serveur : tout doc « iCloud-only » doit être relocalisé AVANT le handoff.`);
 
-  if (rec.length) {
-    console.log(`\n📋 Préconisations :`);
-    rec.forEach((r, i) => console.log(`  ${i + 1}. ${r}`));
-  }
+  console.log(`\n📋 Préconisations :`);
+  rec.forEach((r, i) => console.log(`  ${i + 1}. ${r}`));
   console.log('');
 }
 
@@ -376,6 +388,256 @@ function cmdStatus(root, cfg) {
   console.log(`handoffFile : ${cfg.handoffFile || 'HANDOFF.md'}`);
   console.log(`remotes     : ${Object.keys(cfg.remotes || {}).join(', ') || '(aucun)'}`);
   console.log(`default     : ${cfg.defaultRemote || '(aucun)'}`);
+}
+
+// ============================================================================
+// ROADMAP DRIVER — exécution autonome multi-steps sur le VPS avec AUTO-CONTINUATION.
+//
+// Modèle (choix Léo : « auto-continuation », pas de driver tmux) :
+//   • Le kit vit DANS le repo, versionné : scripts/roadmap/{PROGRESS.md, CONTINUATION_PROMPT.md, next.sh}.
+//   • On itère la roadmap sur le desktop (ici), on commit, on pousse.
+//   • `roadmap launch` bootstrappe le repo+branche sur le VPS et démarre la 1re session.
+//   • Chaque session fait UN step, commit, MAJ PROGRESS.md, puis appelle next.sh → détache une
+//     session `claude -p` FRAÎCHE (Opus + skip-permissions) qui relit CONTINUATION_PROMPT.md.
+//   • Chaque passe = une session distincte sous ~/.claude/projects → visible dans cloudcode.
+//   • Halt volontaire à STATE = AWAITING_DECISION / BLOCKED / DONE (next.sh ne relance pas).
+// ============================================================================
+
+function roadmapCfg(remote) {
+  const r = (remote && remote.roadmap) || {};
+  return {
+    model: r.model || 'opus',
+    kitDir: r.kitDir || 'scripts/roadmap',
+    progressFile: r.progressFile || 'scripts/roadmap/PROGRESS.md',
+    promptFile: r.promptFile || 'scripts/roadmap/CONTINUATION_PROMPT.md',
+    nextFile: r.nextFile || 'scripts/roadmap/next.sh',
+  };
+}
+// URL cloudcode d'affichage (softcodée : remote.cloudcodeUrl, sinon rien).
+function cloudcodeUrl(remote) { return remote && remote.cloudcodeUrl; }
+
+// Petite exécution SSH en shell de LOGIN (indispensable : ~/.profile met claude sur le PATH
+// et exporte CLAUDE_CODE_OAUTH_TOKEN, hérité par la session détachée).
+function sshLogin(sshTarget, script) {
+  return sh(`ssh -o BatchMode=yes -o ConnectTimeout=12 ${sshTarget} 'bash -ls'`, { input: script });
+}
+
+// ---------- roadmap init (scaffolding LOCAL du kit dans le repo) ----------
+function cmdRoadmapInit(root, flags) {
+  const kitDir = join(root, 'scripts', 'roadmap');
+  mkdirSync(kitDir, { recursive: true });
+
+  // next.sh : mécanisme d'auto-continuation. Toujours (re)copié depuis le template du skill.
+  const nextDst = join(kitDir, 'next.sh');
+  copyFileSync(join(ROADMAP_TPL, 'next.sh'), nextDst);
+  try { chmodSync(nextDst, 0o755); } catch {}
+  ok(`Écrit scripts/roadmap/next.sh (mécanisme d'auto-continuation).`);
+
+  const subst = (s) => s
+    .replace(/\{\{TITRE\}\}/g, flags.title || root.split('/').pop() + ' — roadmap autonome')
+    .replace(/\{\{OBJECTIF\}\}/g, flags.objectif || flags.title || 'la roadmap')
+    .replace(/\{\{BRANCHE\}\}/g, flags.branch || currentBranch())
+    .replace(/\{\{GATE\}\}/g, flags.gate || 'npm run audit')
+    .replace(/\{\{PREMIER_STEP\}\}/g, flags.step || 'S1')
+    .replace(/\{\{DESCRIPTION\}\}/g, 'décris le premier step')
+    .replace(/\{\{AUTRES_TESTS\}\}/g, '(liste les tests/oracle exécutables sur la cible)');
+
+  for (const [tpl, dst, label] of [
+    ['PROGRESS.template.md', 'PROGRESS.md', "l'état vivant"],
+    ['CONTINUATION_PROMPT.template.md', 'CONTINUATION_PROMPT.md', 'le prompt de reprise'],
+  ]) {
+    const d = join(kitDir, dst);
+    if (existsSync(d) && !flags.force) { info(`scripts/roadmap/${dst} existe déjà — laissé tel quel (--force pour écraser).`); continue; }
+    writeFileSync(d, subst(readFileSync(join(ROADMAP_TPL, tpl), 'utf8')));
+    ok(`Écrit scripts/roadmap/${dst} (${label}).`);
+  }
+  console.log('\n   Édite PROGRESS.md (checklist des steps) et CONTINUATION_PROMPT.md, commite, pousse,');
+  console.log('   puis :  node <skill>/scripts/handoff.mjs roadmap launch --to <remote>\n');
+}
+
+// ---------- roadmap launch (desktop → VPS : bootstrap + démarre la 1re session) ----------
+function cmdRoadmapLaunch(root, cfg, flags) {
+  const remote = resolveRemote(cfg, flags.to);
+  if (!remote) die('Aucun remote configuré (remotes / defaultRemote dans .claude/handoff.json).');
+  if (!remote.repoPath) die(`Le remote "${remote.key}" n'a pas de repoPath (chemin du repo sur la cible).`);
+  const rc = roadmapCfg(remote);
+  const branch = flags.branch || currentBranch();
+  const model = flags.model || rc.model;
+  const repoSsh = remote.repoSsh || flags['repo-ssh'] || '';
+
+  // Le kit doit exister localement et être commité (il voyage par git).
+  if (!existsSync(join(root, rc.nextFile)))
+    die(`${rc.nextFile} absent en local. Lance d'abord :  node <skill>/scripts/handoff.mjs roadmap init`);
+
+  // Pousser la branche sur origin pour que le VPS la récupère (jamais forcé : branche de travail réelle).
+  info(`Pousse ${branch} sur origin…`);
+  try { shLoud(`git push origin ${branch}`); }
+  catch { die(`git push origin ${branch} a échoué (divergence ?). Résous en local avant de lancer.`); }
+
+  const RP = remote.repoPath;
+  // Doctrine « tout online » : GitHub = source unique de vérité. Le dossier VPS est un CACHE
+  // JETABLE, resynchronisé DUR sur origin à chaque lancement (git reset --hard). Rien de valeur
+  // n'y vit jamais seul — chaque step commit+push vers la branche (voir CONTINUATION_PROMPT).
+  const script = [
+    `set -e`,
+    `command -v claude >/dev/null || { echo "❌ claude absent du PATH (shell login ?)"; exit 1; }`,
+    `if [ ! -d "${RP}/.git" ]; then`,
+    repoSsh ? `  echo "→ clone ${repoSsh} dans ${RP} (cache jetable)"; git clone -q "${repoSsh}" "${RP}";`
+            : `  echo "❌ ${RP} absent et repoSsh non configuré (clone impossible)"; exit 1;`,
+    `fi`,
+    `cd "${RP}"`,
+    `git fetch -q origin`,
+    `git checkout -q ${branch} 2>/dev/null || git checkout -q -b ${branch} origin/${branch}`,
+    `git reset -q --hard origin/${branch}   # VPS = exactement l'état GitHub (cache jetable, zéro dérive)`,
+    `chmod +x ${rc.nextFile} 2>/dev/null || true`,
+    `[ -f "${rc.promptFile}" ] || { echo "❌ ${rc.promptFile} absent après checkout"; exit 1; }`,
+    `grep -qE '^STATE:[[:space:]]*RUNNING' ${rc.progressFile} || echo "⚠️  STATE n'est pas RUNNING dans ${rc.progressFile} — next.sh ne relancera pas"`,
+    `echo "→ démarrage de la 1re session (model=${model})"`,
+    `ROADMAP_MODEL=${model} bash ${rc.nextFile}`,
+    `echo "PROJECT_SLUG=$(pwd | sed 's#/#-#g')"`,
+  ].join('\n');
+
+  console.log(`\n🚀 Roadmap launch → "${remote.key}" (${remote.ssh}), branche ${branch}`);
+  let outp;
+  try { outp = sshLogin(remote.ssh, script); }
+  catch (e) { die(`SSH/lancement a échoué :\n   ${(e.stderr || e.message || '').toString().trim()}`); }
+  console.log(outp);
+  ok('Chaîne autonome démarrée sur le VPS (auto-continuation via next.sh).');
+  const url = cloudcodeUrl(remote);
+  if (url) console.log(`\n   👀 Suivre depuis le téléphone : ${url}`);
+  console.log(`   État :   node <skill>/scripts/handoff.mjs roadmap status --to ${remote.key}`);
+  console.log(`   Sessions : node <skill>/scripts/handoff.mjs roadmap sessions --to ${remote.key}\n`);
+}
+
+// ---------- roadmap status (état du driver sur le VPS) ----------
+function cmdRoadmapStatus(root, cfg, flags) {
+  const remote = resolveRemote(cfg, flags.to);
+  if (!remote) die('Aucun remote configuré.');
+  if (!remote.repoPath) die(`Le remote "${remote.key}" n'a pas de repoPath.`);
+  const rc = roadmapCfg(remote);
+  const RP = remote.repoPath;
+  const script = [
+    `cd "${RP}" 2>/dev/null || { echo "REPO_ABSENT"; exit 0; }`,
+    `echo "=== STATE ==="`,
+    `grep -E '^(STATE|CURRENT_STEP|LAST_COMMIT|UPDATED):' ${rc.progressFile} 2>/dev/null || echo "(pas de PROGRESS.md)"`,
+    `echo "=== RUNNING ==="`,
+    `RP="$(pwd)"; found=""`,
+    `for pid in $(pgrep -x claude 2>/dev/null); do c=$(readlink /proc/$pid/cwd 2>/dev/null); [ "$c" = "$RP" ] && { echo "session claude EN COURS (pid $pid)"; found=1; }; done`,
+    `[ -z "$found" ] && echo "aucune session claude active dans ce repo"`,
+    `echo "=== 3 derniers commits ==="`,
+    `git log --oneline -3 2>/dev/null`,
+    `echo "=== tail dernier log roadmap ==="`,
+    `L=$(ls -t ~/.handoff/$(basename "$RP")/roadmap-*.log 2>/dev/null | head -1); [ -n "$L" ] && tail -n 8 "$L" || echo "(aucun log)"`,
+  ].join('\n');
+  console.log(`\n📍 Roadmap status — "${remote.key}" (${RP})`);
+  console.log(sshLogin(remote.ssh, script));
+}
+
+// ---------- roadmap sessions (tableau synthétique des sessions Claude du VPS) ----------
+function cmdRoadmapSessions(root, cfg, flags) {
+  const remote = resolveRemote(cfg, flags.to);
+  if (!remote) die('Aucun remote configuré.');
+  // Émet des lignes machine : P|slug|nSessions|lastSid|lastEpoch|lastTurns  et  R|pid|cwd
+  const script = [
+    `for d in ~/.claude/projects/*/; do`,
+    `  [ -d "$d" ] || continue`,
+    `  slug=$(basename "$d")`,
+    `  n=$(ls "$d"*.jsonl 2>/dev/null | wc -l | tr -d ' ')`,
+    `  [ "$n" = "0" ] && continue`,
+    `  f=$(ls -t "$d"*.jsonl 2>/dev/null | head -1)`,
+    `  printf 'P|%s|%s|%s|%s|%s\\n' "$slug" "$n" "$(basename "$f" .jsonl)" "$(stat -c %Y "$f")" "$(wc -l < "$f" | tr -d ' ')"`,
+    `done`,
+    `for pid in $(pgrep -x claude 2>/dev/null); do printf 'R|%s|%s\\n' "$pid" "$(readlink /proc/$pid/cwd 2>/dev/null)"; done`,
+    `printf 'NOW|%s\\n' "$(date +%s)"`,
+  ].join('\n');
+  let raw;
+  try { raw = sshLogin(remote.ssh, script); }
+  catch (e) { die(`SSH a échoué :\n   ${(e.stderr || e.message || '').toString().trim()}`); }
+
+  const projects = [];
+  const running = new Set(); // slugs
+  let now = Math.floor(Date.now() / 1000);
+  for (const l of raw.split('\n')) {
+    const p = l.split('|');
+    if (p[0] === 'P') projects.push({ slug: p[1], n: +p[2], sid: p[3], epoch: +p[4], turns: +p[5] });
+    else if (p[0] === 'R' && p[2]) running.add(p[2].replace(/\//g, '-'));
+    else if (p[0] === 'NOW') now = +p[1];
+  }
+  if (!projects.length) { console.log('\n(aucune session Claude sur le VPS)\n'); return; }
+
+  const ago = (e) => {
+    const s = Math.max(0, now - e);
+    if (s < 3600) return `${Math.floor(s / 60)} min`;
+    if (s < 86400) return `${Math.floor(s / 3600)} h`;
+    return `${Math.floor(s / 86400)} j`;
+  };
+  const nice = (slug) => slug.replace(/^-home-leo-?/, '') || '(racine ~)';
+  projects.sort((a, b) => b.epoch - a.epoch);
+
+  const rows = projects.map(p => ({
+    proj: nice(p.slug),
+    run: running.has(p.slug) ? '🟢 oui' : '—',
+    sid: p.sid.slice(0, 8),
+    last: ago(p.epoch),
+    turns: String(p.turns),
+    n: String(p.n),
+  }));
+  const cols = [
+    ['Projet', 'proj'], ['En cours', 'run'], ['Dernière session', 'sid'],
+    ['Activité', 'last'], ['Tours', 'turns'], ['# sess.', 'n'],
+  ];
+  const w = cols.map(([h, k]) => Math.max(h.length, ...rows.map(r => r[k].length)));
+  const fmt = (cells) => '| ' + cells.map((c, i) => c.padEnd(w[i])).join(' | ') + ' |';
+  console.log(`\n🖥️  Sessions Claude — VPS "${remote.key}"\n`);
+  console.log(fmt(cols.map(c => c[0])));
+  console.log('| ' + w.map(x => '-'.repeat(x)).join(' | ') + ' |');
+  rows.forEach(r => console.log(fmt(cols.map(c => r[c[1]]))));
+  const active = rows.filter(r => r.run !== '—').length;
+  console.log(`\n   ${projects.length} projet(s), ${active} session(s) active(s).\n`);
+}
+
+// ---------- roadmap stop (arrête la chaîne autonome pour ce repo) ----------
+function cmdRoadmapStop(root, cfg, flags) {
+  const remote = resolveRemote(cfg, flags.to);
+  if (!remote) die('Aucun remote configuré.');
+  if (!remote.repoPath) die(`Le remote "${remote.key}" n'a pas de repoPath.`);
+  const RP = remote.repoPath;
+  const script = [
+    `RP=$(cd "${RP}" 2>/dev/null && pwd)`,
+    `[ -z "$RP" ] && { echo "REPO_ABSENT"; exit 0; }`,
+    `k=0`,
+    `for pid in $(pgrep -x claude 2>/dev/null); do c=$(readlink /proc/$pid/cwd 2>/dev/null); [ "$c" = "$RP" ] && { kill "$pid" && echo "arrêté pid $pid"; k=1; }; done`,
+    `[ "$k" = "0" ] && echo "aucune session claude active dans $RP (rien à arrêter)"`,
+  ].join('\n');
+  console.log(`\n🛑 Roadmap stop — "${remote.key}" (${RP})`);
+  console.log(sshLogin(remote.ssh, script));
+  info('La chaîne ne se relancera pas (une session tuée en cours de step n\'appelle pas next.sh).');
+}
+
+// ---------- roadmap answer (injecte la réponse de Léo à une frontière + relance) ----------
+function cmdRoadmapAnswer(root, cfg, flags) {
+  const remote = resolveRemote(cfg, flags.to);
+  if (!remote) die('Aucun remote configuré.');
+  if (!remote.repoPath) die(`Le remote "${remote.key}" n'a pas de repoPath.`);
+  if (!flags.decision) die('Précise la réponse : --decision "go reco 1, choix B pour 2, …".');
+  const rc = roadmapCfg(remote);
+  const branch = flags.branch || currentBranch();
+  const model = flags.model || rc.model;
+  const RP = remote.repoPath;
+  const ansFile = join(rc.kitDir, 'DECISIONS_ANSWERED.md');
+  const decision = shEsc(flags.decision);
+  const script = [
+    `cd "${RP}" 2>/dev/null || { echo "REPO_ABSENT"; exit 1; }`,
+    `git checkout -q ${branch} 2>/dev/null || true`,
+    `{ echo ""; echo "## Réponse Léo $(date '+%Y-%m-%d %H:%M')"; echo '${decision}'; } >> ${ansFile}`,
+    `sed -i -E 's/^STATE:.*/STATE: RUNNING/' ${rc.progressFile}`,
+    `git add -A && git commit -q -m "roadmap: réponse frontière de Léo" || true`,
+    `echo "→ relance session fraîche (model=${model})"`,
+    `ROADMAP_MODEL=${model} bash ${rc.nextFile}`,
+  ].join('\n');
+  console.log(`\n💬 Réponse frontière → "${remote.key}", branche ${branch}`);
+  console.log(sshLogin(remote.ssh, script));
+  ok('Réponse injectée, STATE=RUNNING, chaîne relancée.');
 }
 
 // ---------- main ----------
@@ -391,6 +653,29 @@ switch (cmd) {
   case 'in':              cmdIn(root, loadConfig(root), flags); break;
   case 'check':           cmdCheck(root, flags); break;
   case 'status':          cmdStatus(root, loadConfig(root)); break;
+  case 'roadmap': {
+    const sub = flags._[1];
+    const cfg = () => loadConfig(root);
+    switch (sub) {
+      case 'init':     cmdRoadmapInit(root, flags); break;
+      case 'launch':   cmdRoadmapLaunch(root, cfg(), flags); break;
+      case 'status':   cmdRoadmapStatus(root, cfg(), flags); break;
+      case 'sessions': cmdRoadmapSessions(root, cfg(), flags); break;
+      case 'stop':     cmdRoadmapStop(root, cfg(), flags); break;
+      case 'answer':   cmdRoadmapAnswer(root, cfg(), flags); break;
+      default:
+        console.log(`roadmap — exécution autonome multi-steps sur le VPS (auto-continuation)
+
+  roadmap init                                       scaffold scripts/roadmap/{PROGRESS,CONTINUATION_PROMPT,next.sh}
+                   [--title ..] [--objectif ..] [--branch ..] [--gate ..] [--step ..] [--force]
+  roadmap launch   [--to <remote>] [--branch ..] [--model opus]   bootstrap repo+branche sur le VPS + démarre la 1re session
+  roadmap status   [--to <remote>]                   STATE/CURRENT_STEP + session active + derniers commits + log
+  roadmap sessions [--to <remote>]                   tableau synthétique des sessions Claude du VPS
+  roadmap answer   --decision "..." [--to <remote>]  injecte la réponse à une frontière + relance la chaîne
+  roadmap stop     [--to <remote>]                   arrête la chaîne autonome pour ce repo`);
+    }
+    break;
+  }
   default:
     console.log(`handoff.mjs — handoff git d'une session Claude Code entre machines
 
@@ -401,6 +686,7 @@ switch (cmd) {
   in               [<branche>] [--from <remote>]                    récupère le WIP + affiche HANDOFF
   check            [--to <remote>] [--ssh user@host] [--repo <url>] sonde les canaux de transmission de la cible + préconise
   status                                                   état courant
+  roadmap <sub>    init|launch|status|sessions|answer|stop         exécution autonome multi-steps sur le VPS (auto-continuation)
 
 Config : .claude/handoff.json (par repo). Voir references/config-example.json.`);
 }
