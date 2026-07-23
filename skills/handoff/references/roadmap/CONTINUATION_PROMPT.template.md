@@ -16,7 +16,19 @@ tu **pousses** à la fin de chaque step. On travaille avec le git DISTANT à cha
    ```
    Puis lis les docs racine pertinents (CLAUDE.md, etc.) et `scripts/roadmap/PROGRESS.md` (l'état vivant :
    STATE, CURRENT_STEP, la checklist, le journal). Si l'outil mémoire est là, lis les mémoires liées.
+   **Reprise mi-step** : si la section « Checkpoint intra-step » de PROGRESS.md contient des cases cochées,
+   la session précédente est morte en plein step. Le travail coché est déjà dans les commits `wip(…)`
+   poussés (tu viens de les récupérer par le reset --hard). Reprends à la première sous-tâche NON cochée —
+   ne refais PAS le step depuis zéro.
 2. **Fais UN seul step** : le premier `[ ]` de PROGRESS.md depuis CURRENT_STEP, borné à un étage cohérent.
+   **Checkpoint pendant le step** (si le step comporte plusieurs gestes) : commence par écrire sa
+   sous-checklist dans « Checkpoint intra-step » (`CHECKPOINT_STEP: <step>` + une case par sous-tâche),
+   commit+push. Puis après CHAQUE sous-tâche terminée : coche la case et
+   ```bash
+   git add -A && git commit -m "wip(<step>): <sous-tâche>" && git push origin {{BRANCHE}}
+   ```
+   Un crash ne coûte alors jamais plus qu'une sous-tâche. Les commits `wip` n'ont PAS besoin du gate
+   (état intermédiaire assumé) — le gate ne conditionne que le commit FINAL du step.
 3. **Gate AVANT commit** (obligatoire) : `{{GATE}}` doit passer (exit 0) + les tests listés dans PROGRESS.
    Si ROUGE : reverte le step, `STATE: BLOCKED` + raison dans le journal, présente-le et arrête-toi
    (n'appelle PAS next.sh).
@@ -26,7 +38,8 @@ tu **pousses** à la fin de chaque step. On travaille avec le git DISTANT à cha
    git push origin {{BRANCHE}}
    ```
    GitHub reçoit chaque step immédiatement (Léo suit depuis son desktop par simple `git fetch`). Mets à
-   jour PROGRESS.md : coche `[x]`, ref commit, avance CURRENT_STEP, ligne de journal en haut, stampe UPDATED
+   jour PROGRESS.md : coche `[x]`, ref commit, avance CURRENT_STEP, ligne de journal en haut, stampe UPDATED,
+   et **vide la section « Checkpoint intra-step »** (`CHECKPOINT_STEP: (aucun)` — le step est fini)
    (et pousse cette MAJ aussi — c'est le même commit ou un commit de suivi).
 5. **Relance-toi en session fraîche** — mécanisme concret, à exécuter en TOUT DERNIER geste **si et
    seulement si `STATE: RUNNING`** :

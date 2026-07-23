@@ -153,7 +153,8 @@ Deux choix de conception assumés (Léo) :
 
 ## Le kit (versionné DANS le repo cible : `scripts/roadmap/`)
 - **`PROGRESS.md`** — l'état vivant : `STATE` (RUNNING / AWAITING_DECISION / BLOCKED / DONE),
-  `CURRENT_STEP`, la checklist des steps, les règles dures (branche, gate), le journal append-only.
+  `CURRENT_STEP`, la checklist des steps, les règles dures (branche, gate), le **checkpoint intra-step**
+  (sous-checklist du step en cours, pour reprendre mi-step après un crash) et le journal append-only.
 - **`CONTINUATION_PROMPT.md`** — le prompt de reprise que chaque session relit : charge l'état → fait
   1 step → gate → commit → MAJ PROGRESS → `bash next.sh` si `RUNNING`, sinon halt.
 - **`next.sh`** — le **mécanisme concret** d'auto-continuation : détache une `claude -p` FRAÎCHE avec
@@ -209,7 +210,8 @@ volée si absent), `repoSsh` (URL de clone SSH — privé ⇒ pas d'HTTPS), `clo
   Ne l'active que pour une branche isolée avec des règles dures claires.
 - **Fin de chaîne silencieuse.** Si une session meurt (blip API) avant d'appeler `next.sh`, la chaîne
   s'arrête **proprement** (rien ne relance) — c'est un halt, pas une corruption. `roadmap status` le
-  montre ; relancer = `roadmap launch` (idempotent : reprend depuis CURRENT_STEP).
+  montre ; relancer = `roadmap launch` (idempotent : reprend depuis CURRENT_STEP, et **mi-step** grâce au
+  checkpoint intra-step — les sous-tâches déjà poussées en `wip(…)` ne sont pas refaites ni repayées).
 
 ## Commandes (roadmap)
 - `roadmap init [--title ..] [--objectif ..] [--branch ..] [--gate ..] [--step ..] [--force]` — scaffold le kit dans `scripts/roadmap/`.
