@@ -136,6 +136,17 @@ pour les coffres karto/Bitwarden, pas pour ce cas déjà acté). Généralisatio
 un outil qui a son propre agent/cache (ssh-agent, gpg-agent, keychain), vérifie d'abord que
 l'agent n'est pas simplement vide — un agent vidé par un redémarrage n'est pas un secret perdu.
 
+**Affûtage (25/07/2026) — le déclencheur est le SYMPTÔME, pas la lecture de ce skill.** La règle
+ci-dessus n'a pas servi le 25/07 : `ssh root@VPS` a renvoyé `Permission denied (publickey)`, ç'a été
+lu comme un **refus de permission**, annoncé à Léo (« je n'ai pas pu sonder ») et la réponse a été
+bâtie sur la **documentation** au lieu de l'état réel — qui contenait 4 crons de plus et une heure
+fausse. `ssh-add --apple-load-keychain` a suffi ensuite : la clé était dans le Keychain, l'agent
+était juste vide. **Règle actionnable : `Permission denied (publickey)` sur une machine de Léo n'est
+JAMAIS un refus d'accès ni une raison de se replier sur la doc.** Enchaîner immédiatement, sans
+demander : `ssh-add -l` → `ssh-add --apple-load-keychain` → (si vide) fenêtre masquée +
+`ssh-add --apple-use-keychain`. Ne remonter le problème à Léo qu'après les trois. Cf.
+[[feedback-vps-ssh-toujours-sonder]].
+
 ## Quand tu n'es pas sûr : vérifie en lecture seule d'abord
 
 Avant une action **destructive ou irréversible** qui dépend du secret (déchiffrer-puis-réécrire un coffre, écraser un fichier, déployer), si tu as un doute sur la validité du secret, fais d'abord un **test en lecture seule** : déchiffre / authentifie sans rien écrire ni envoyer, et confirme que ça passe. Ça évite de partir dans une opération à mi-chemin avec un mauvais secret.
