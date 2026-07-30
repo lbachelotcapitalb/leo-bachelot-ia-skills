@@ -36,6 +36,14 @@ const T = Object.assign({
   large_text: 56,        // px, canvas — above this, WCAG "large"
   contrast_large: 3.0,
   contrast_small: 4.5,
+  occupancy_min: 0,       // 0 = off. Un benchmark le règle (assets/benchmarks/).
+  card_void_soft: 0.22,   // plus grand vide dans une vignette / aire de la vignette
+  card_void_hard: 0.30,   // au-delà : défaut dur (« jamais de gros vide dans une vignette »)
+  margin_tol: 6,          // px d'encre toleres dans la marge de la slide
+  card_void_min_frac: 0.35, // un vide doit faire >=35% de la LARGEUR et de la HAUTEUR
+  justify_ratio_soft: 1.8,  // pire espace inter-mot / mediane
+  justify_ratio_hard: 2.5,  // au-dela : rivieres, abandonner justify
+  card_min_px2: 90000,    // en dessous, c'est une pastille, pas une vignette
 }, A.thresholds || {})
 
 if (!DECK) { cliLog('GATE: FAIL — no deck path in GATE_ARGS'); }
@@ -96,6 +104,32 @@ const bgOf = (el) => {
 /* --- element census -------------------------------------------------- */
 const hasOwnText = (el) => [...el.childNodes].some(n => n.nodeType === 3 && n.textContent.trim().length);
 const MEDIA = new Set(['IMG', 'SVG', 'VIDEO', 'CANVAS', 'PICTURE']);
+
+/* THE INK OF A TEXT ELEMENT IS ITS LINES, NOT ITS BOX.
+   A <p> placed in a 1fr grid row is stretched to the full row height:
+   its box fills the void the eye plainly sees, and every measurement
+   built on that box reports a full card. Range.getClientRects() returns
+   the real line boxes, so a 3-line paragraph in a 300 px slot measures
+   3 lines. Same fix makes overlaps honest: a stretched box no longer
+   collides with its neighbour on empty air. */
+const lineRects = (el) => {
+  const out = [];
+  for (const n of el.childNodes) {
+    if (n.nodeType !== 3 || !n.textContent.trim()) continue;
+    const rg = document.createRange();
+    rg.selectNodeContents(n);
+    for (const r of rg.getClientRects()) {
+      if (r.width > 0.5 && r.height > 0.5) {
+        out.push({ x: r.x, y: r.y, w: r.width, h: r.height, right: r.right, bottom: r.bottom });
+      }
+    }
+  }
+  return out;
+};
+const union = (rs) => rs.reduce((a, r) => a ? {
+  x: Math.min(a.x, r.x), y: Math.min(a.y, r.y),
+  right: Math.max(a.right, r.right), bottom: Math.max(a.bottom, r.bottom),
+} : { x: r.x, y: r.y, right: r.right, bottom: r.bottom }, null);
 const path = (el) => {
   const bits = []; let n = el;
   while (n && n !== slide && bits.length < 4) {
@@ -139,8 +173,13 @@ for (const el of slide.querySelectorAll('*')) {
   }
 
   if (isText || isMedia) {
+    const lines = isText ? lineRects(el) : [box];
+    if (!lines.length) continue;
+    const u = union(lines);
     items.push({
-      el, box, kind: isText ? 'text' : 'media', sel: path(el),
+      el, kind: isText ? 'text' : 'media', sel: path(el),
+      box: { ...u, w: u.right - u.x, h: u.bottom - u.y },
+      lines,                                   // real line boxes, for the raster
       fs: parseFloat(cs.fontSize) || 0,
       color: parse(cs.color),
       text: isText ? el.textContent.trim().slice(0, 60) : '',
@@ -182,13 +221,24 @@ const isContainer = (el) => {
          parseFloat(cs.borderTopWidth) > 0 || parseFloat(cs.borderBottomWidth) > 0;
 };
 const overflow = clipped.map(c => ({ kind: 'clipped', sel: c.sel, by_px: c.by_px, text: c.text }));
+const scs = getComputedStyle(slide);
+const safe = {
+  l: parseFloat(scs.paddingLeft), t: parseFloat(scs.paddingTop),
+  r: W - parseFloat(scs.paddingRight), b: H - parseFloat(scs.paddingBottom),
+};
 for (const it of items) {
-  const b = it.box;
+  const er = it.el.getBoundingClientRect();
+  const b = { x: er.x, y: er.y, right: er.right, bottom: er.bottom, w: er.width, h: er.height };
   if (b.x < -T.overflow_tol || b.y < -T.overflow_tol || b.right > W + T.overflow_tol || b.bottom > H + T.overflow_tol) {
     overflow.push({ sel: it.sel, kind: 'off-canvas', text: it.text,
       box: [Math.round(b.x), Math.round(b.y), Math.round(b.w), Math.round(b.h)] });
     continue;
   }
+  const marg = Math.max(b.bottom - safe.b, safe.t - b.y, b.right - safe.r, safe.l - b.x);
+  if (marg > T.margin_tol) {
+    overflow.push({ sel: it.sel, kind: 'in-slide-margin', by_px: +marg.toFixed(1), text: it.text });
+  }
+
   let p = it.el.parentElement, host = null;
   while (p && p !== slide) { if (isContainer(p)) { host = p; break; } p = p.parentElement; }
   if (!host) continue;
@@ -219,7 +269,7 @@ const mark = (grid, boxes) => {
   }
 };
 const inkGrid = new Uint8Array(GW * GH), paintGrid = new Uint8Array(GW * GH);
-mark(inkGrid, items.map(i => i.box));
+mark(inkGrid, items.flatMap(i => i.lines));
 mark(paintGrid, paint);
 
 const bboxOf = (grid) => {
@@ -270,6 +320,112 @@ const deadPaint = largestEmpty(paintGrid, bboxOf(paintGrid));
 const deadInk = largestEmpty(inkGrid, ink);
 const dead = deadPaint ? { ...deadPaint, ink_frac: deadInk ? deadInk.frac : null } : null;
 
+/* ---------- audit_card_voids ----------------------------------------
+   « Jamais de gros vide dans une vignette » (Léo, 30/07). A card is
+   sized BY ITS TEXT, not by the container it sits in — a card stretched
+   to fill a band and left half empty is a defect, and it is the one the
+   slide-level dead space misses: at slide scale the card reads as a
+   full painted surface. So each card is re-rasterised on its own ink
+   and measured against its OWN area. */
+const cardVoids = [];
+for (const el of slide.querySelectorAll('*')) {
+  const cs = getComputedStyle(el);
+  if (cs.display === 'none' || cs.visibility === 'hidden') continue;
+  const bgc = parse(cs.backgroundColor);
+  const isCard = (bgc && bgc.a > 0.02) || parseFloat(cs.borderTopWidth) > 0;
+  if (!isCard) continue;
+  const r = el.getBoundingClientRect();
+  if (r.width * r.height < T.card_min_px2) continue;      // pills, chips, rules: not cards
+  const inside = items.filter(i => el.contains(i.el) && i.el !== el);
+  if (inside.length < 2) continue;                        // a plain banner is not a card
+  const bb = {
+    x0: Math.max(0, Math.floor(r.x / C)), y0: Math.max(0, Math.floor(r.y / C)),
+    x1: Math.min(GW - 1, Math.ceil(r.right / C) - 1), y1: Math.min(GH - 1, Math.ceil(r.bottom / C) - 1),
+  };
+  if (bb.x1 <= bb.x0 || bb.y1 <= bb.y0) continue;
+  const g = new Uint8Array(GW * GH);
+  mark(g, inside.flatMap(i => i.lines));
+  const v = largestEmpty(g, bb);
+  const cw = (bb.x1 - bb.x0 + 1) * C, ch = (bb.y1 - bb.y0 + 1) * C;
+  const twoD = v && v.rect_px &&
+    v.rect_px[2] >= cw * T.card_void_min_frac && v.rect_px[3] >= ch * T.card_void_min_frac;
+  if (v && twoD && v.frac >= T.card_void_soft) {
+    cardVoids.push({ sel: path(el), frac: v.frac, rect_px: v.rect_px,
+      card_px: [Math.round(r.x), Math.round(r.y), Math.round(r.width), Math.round(r.height)] });
+  }
+}
+
+/* ---------- audit_justification --------------------------------------
+   Le texte d'une vignette arbitre un compromis a plusieurs entrees :
+   forme justifiee / espaces inter-mots qui ne se creusent pas /
+   equidistance des lignes / meme taille d'une vignette a l'autre.
+   La justification n'est legitime que si elle ne creuse pas de
+   rivieres. On mesure la largeur de CHAQUE espace inter-mot : si le
+   pire s'ecarte trop de la mediane, il faut deplacer le compromis
+   (changer la taille, ou abandonner justify). La derniere ligne est
+   exclue : elle est en drapeau par construction. */
+const justify = [];
+for (const it of items) {
+  if (it.kind !== 'text') continue;
+  if (getComputedStyle(it.el).textAlign !== 'justify') continue;
+  const ws = [];
+  for (const n of it.el.childNodes) {
+    if (n.nodeType !== 3) continue;
+    const t = n.textContent;
+    for (let i = 0; i < t.length; i++) {
+      if (t[i] !== ' ') continue;
+      const rg = document.createRange();
+      rg.setStart(n, i); rg.setEnd(n, i + 1);
+      const rc = [...rg.getClientRects()].filter(r => r.width > 0.1);
+      if (rc.length === 1) ws.push({ w: rc[0].width, y: Math.round(rc[0].y) });
+    }
+  }
+  if (ws.length < 3) continue;
+  const lines = [...new Set(ws.map(s => s.y))].sort((a, b) => a - b);
+  const kept = ws.filter(s => s.y !== lines[lines.length - 1]).map(s => s.w).sort((a, b) => a - b);
+  if (kept.length < 3) continue;
+  const med = kept[Math.floor(kept.length / 2)];
+  const max = kept[kept.length - 1];
+  justify.push({
+    sel: it.sel, fs: +it.fs.toFixed(1), lines: lines.length,
+    space_median_px: +med.toFixed(1), space_max_px: +max.toFixed(1),
+    ratio: +(max / med).toFixed(2), text: it.text,
+  });
+}
+
+/* ---------- audit_group_symmetry -------------------------------------
+   « meme taille si elles font partie d'un meme groupe ». Dans une
+   rangee de vignettes soeurs : meme boite, et un meme role (meme
+   classe) porte la MEME taille de police partout. Une taille qui varie
+   d'une vignette a l'autre casse la symetrie du groupe. */
+const symmetry = [];
+for (const row of slide.querySelectorAll('*')) {
+  const kids = [...row.children].filter(k => {
+    const cs = getComputedStyle(k);
+    if (cs.display === 'none' || cs.visibility === 'hidden') return false;
+    const c = parse(cs.backgroundColor);
+    return (c && c.a > 0.02) || parseFloat(cs.borderTopWidth) > 0;
+  });
+  if (kids.length < 2) continue;
+  const boxes = kids.map(k => k.getBoundingClientRect());
+  if (boxes.some(b => b.width * b.height < T.card_min_px2)) continue;
+  const dims = [...new Set(boxes.map(b => Math.round(b.width) + 'x' + Math.round(b.height)))];
+  if (dims.length > 1) symmetry.push({ group: path(row), role: 'taille de la vignette', values: dims });
+  const byRole = {};
+  for (const k of kids) {
+    for (const el of k.querySelectorAll('*')) {
+      if (!hasOwnText(el)) continue;
+      const role = (el.className && String(el.className).trim()) || el.tagName.toLowerCase();
+      const fs = Math.round(parseFloat(getComputedStyle(el).fontSize));
+      (byRole[role] = byRole[role] || []).push(fs);
+    }
+  }
+  for (const [role, sizes] of Object.entries(byRole)) {
+    const uniq = [...new Set(sizes)];
+    if (uniq.length > 1) symmetry.push({ group: path(row), role, values: uniq.map(String) });
+  }
+}
+
 /* ---------- occupancy, margins, symmetry, vbalance ------------------ */
 let occ = 0; for (let k = 0; k < paintGrid.length; k++) occ += paintGrid[k];
 let sx = 0, sy = 0, n = 0;
@@ -288,6 +444,9 @@ return {
   audit_overlaps: overlaps,
   audit_overflow: overflow,
   audit_deadspace: dead,
+  audit_card_voids: cardVoids,
+  audit_justification: justify,
+  audit_group_symmetry: symmetry,
   audit_vbalance: m ? { top_px: m.top, bottom_px: m.bottom, delta_px: Math.abs(m.top - m.bottom) } : null,
   space: {
     occupancy: +(occ / (GW * GH)).toFixed(3),
@@ -334,6 +493,7 @@ for (const i of want) {
   for (const o of r.audit_overflow) {
     if (o.kind === 'escapes-container') H.push(`overflow ${o.sel} escapes ${o.host} by ${o.by_px}px (${o.side}) — "${o.text}"`)
     else if (o.kind === 'clipped') H.push(`overflow ${o.sel} clips its own content by ${o.by_px}px — "${o.text}"`)
+    else if (o.kind === 'in-slide-margin') H.push(`overflow ${o.sel} entre de ${o.by_px}px dans la marge de la slide — "${o.text}"`)
     else H.push(`overflow ${o.kind}: ${o.sel} — "${o.text}"`)
   }
   /* Dead space and vertical balance are the two metrics that encode TASTE:
@@ -350,6 +510,21 @@ for (const i of want) {
     const v = r.audit_vbalance
     ;(STRICT && v.delta_px >= T.vbalance_hard ? H : S)
       .push(`vbalance top ${v.top_px}px vs bottom ${v.bottom_px}px — delta ${v.delta_px}px`)
+  }
+  for (const v of (r.audit_card_voids || [])) {
+    const msg = `vignette vide à ${Math.round(v.frac * 100)}% — ${v.sel} (vide [${v.rect_px}] dans une carte de ${v.card_px[2]}×${v.card_px[3]})`
+    ;(v.frac >= T.card_void_hard ? H : S).push(msg)
+  }
+  for (const j of (r.audit_justification || [])) {
+    if (j.ratio < T.justify_ratio_soft) continue
+    const msg = `justification : espace inter-mot ×${j.ratio} (médiane ${j.space_median_px}px, pire ${j.space_max_px}px) à ${j.fs}px sur ${j.lines} lignes — ${j.sel}`
+    ;(j.ratio >= T.justify_ratio_hard ? H : S).push(msg)
+  }
+  for (const y of (r.audit_group_symmetry || [])) {
+    H.push(`symétrie de groupe : « ${y.role} » varie dans ${y.group} → ${y.values.join(' / ')}`)
+  }
+  if (T.occupancy_min && r.space.occupancy < T.occupancy_min) {
+    S.push(`occupation ${Math.round(r.space.occupancy * 100)}% < ${Math.round(T.occupancy_min * 100)}% attendu par le benchmark`)
   }
   for (const t of r.text) {
     if (t.fs < T.floor_hard) H.push(`type ${t.fs}px < ${T.floor_hard} floor — ${t.sel} "${t.text}"`)

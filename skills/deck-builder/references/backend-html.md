@@ -121,12 +121,30 @@ rebuilds `assets/templates/` from the source repo.
 The source repo said "verify overflow" and shipped no way to do it. This is that way.
 
 ```bash
-bin/gate.sh /abs/path/deck.html                 # every slide
-bin/gate.sh /abs/deck.html --slides 3,7         # only those
-bin/gate.sh /abs/deck.html --strict             # dead space + vbalance also gate
-bin/gate.sh /abs/deck.html --set floor_soft=32  # move a threshold
-bin/selftest.sh                                 # prove the gate itself still works
+bin/gate.sh /abs/path/deck.html                      # every slide
+bin/gate.sh /abs/deck.html --slides 3,7              # only those
+bin/gate.sh /abs/deck.html --benchmark lecture-dense # a calibrated threshold set
+bin/gate.sh /abs/deck.html --strict                  # dead space + vbalance also gate
+bin/gate.sh /abs/deck.html --set floor_soft=32       # move one threshold
+bin/selftest.sh                                      # prove the gate itself still works
 ```
+
+### Benchmarks — the thresholds depend on the kind of deck
+
+`assets/benchmarks/<name>.json` holds a named threshold set, its `when` (which kind of deck it
+describes), and what it was `calibrated_on`. A reading deck and a speaker deck do not want the
+same numbers: 17 % dead space is a defect in a dense report and a deliberate breath in a keynote.
+
+| benchmark | for | key values |
+|---|---|---|
+| `lecture-dense` | report, review, diagnostic, client deliverable — read alone | body ≥ 28 px, dead ≤ 12 %, occupancy ≥ 55 % |
+| `orateur` | projected and narrated, one idea per slide | body ≥ 36 px, dead ≤ 30 %, occupancy ≥ 20 % |
+
+`lecture-dense` is calibrated on a real deck (`decks/sante-si-karto.html`, 10 slides) and its
+`observed` block records the distribution it came from. `orateur` is a starting guess and says
+so — **correct it against the first real speaker deck rather than trusting it.** Adding a
+benchmark is copying a file and writing down what it was measured on; a benchmark with no
+`calibrated_on` is an opinion wearing a number.
 
 Exit 0 = PASS, 1 = at least one HARD defect. Full JSON in `/tmp/deck-gate.json` (`--out`).
 
@@ -162,6 +180,20 @@ objective defect and blocks. `--strict` promotes them when you want a deck to be
 - Re-run the whole deck at the end, not just the slide you touched — a shared class travels.
 - The gate output is a deliverable, not a chore: it is the proof Léo reads (`/verify`
   doctrine). Hand back the final PASS line, not a claim.
+
+### What the gate CANNOT see — always look at the render
+
+Two defects shipped past a full PASS on the first real deck, and both are invisible to geometry:
+
+1. **An element that renders but paints nothing.** `<span class="fill">` inside a bar track is an
+   *inline* element, so `height: 100%` does nothing: twelve bars measured perfectly and showed
+   empty. Geometry was valid, the chart was blank.
+2. **A proportional element whose length does not match its value.** `flex: 39` on a child of a
+   `display: grid` is ignored, so a 39/14/7/1 stacked bar rendered as four equal blocks. The slide
+   was geometrically flawless and numerically false.
+
+The gate measures where things are, not whether they say the truth. **A slide carrying a
+proportion always gets a human look**, and the proportion gets checked against the source number.
 
 Then, and only then, look at a render. `Page.captureScreenshot` at 1920×1080 gives a faithful
 image; the gate buys the right to ask "does it read well?", it does not answer it.

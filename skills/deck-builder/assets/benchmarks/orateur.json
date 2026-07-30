@@ -1,0 +1,16 @@
+{
+  "name": "orateur",
+  "when": "Deck projeté et commenté à voix haute : une idée par slide, grande typo, beaucoup de respiration. Le vide y est un choix, pas un défaut — les seuils d'espace mort sont donc larges et le plancher typo est relevé.",
+  "calibrated_on": "non calibré sur un deck réel — valeurs de départ à corriger au premier usage",
+  "thresholds": {
+    "floor_soft": 36,
+    "deadspace_soft": 0.3,
+    "deadspace_hard": 0.55,
+    "vbalance_soft": 80,
+    "vbalance_hard": 200,
+    "occupancy_min": 0.2,
+    "card_void_soft": 0.28,
+    "card_void_hard": 0.4,
+    "margin_tol": 6
+  }
+}

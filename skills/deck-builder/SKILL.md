@@ -169,6 +169,27 @@ choice. Centre it in its band, computing the position from the MEASURED header b
 never from a hardcoded content band that ignores where the header actually ends. If both
 gaps are large, the block is too small → enlarge type/nodes/pitch to exploit the space.
 
+**A VIGNETTE IS SIZED BY ITS TEXT, NEVER BY THE BAND IT SITS IN.** (Léo, 30/07/2026:
+« jamais de gros vide dans des vignettes, il faut les calibrer en fonction de la taille des
+textes ».) The reflex of stretching a card row to fill the content band produces a row of
+tall half-empty cards — the card reads as a full painted surface at slide scale, so the
+slide-level dead-space measure misses it entirely. Three consequences, all mandatory:
+
+1. **Do not stretch the row to the band.** Let the cards take their natural height and
+   centre the row in the band. If that leaves a large slide-level void, the fix is to grow
+   the type and add substance INSIDE the cards until they legitimately fill it — not to
+   stretch them.
+2. **Same group = same size.** Every card of one row/section is identical in size. The
+   tallest content sets the height for all.
+3. **To equalise, pin the PARAGRAPH to the card's BOTTOM** (`align-self: end`). All the
+   paragraphs of the group then share their last baseline and the variation in length shows
+   as a small gap ABOVE the paragraph, never as a ragged row of feet. Better still, write
+   the copy so every card has the same number of lines — equalise by the text first, by the
+   CSS second.
+
+`bin/gate.sh` measures this: `audit_card_voids` re-rasterises each card on its own ink and
+flags a card that is more than ~22 % empty (hard past 30 %).
+
 **Cross-card alignment (a ROW of equal-size cards):** TOP-ALIGN to a SHARED grid, never
 center each card independently. Icons on one line, labels on one line, titles on one line,
 bodies starting on one line — across ALL cards. Reserve the title block at the MAX title
