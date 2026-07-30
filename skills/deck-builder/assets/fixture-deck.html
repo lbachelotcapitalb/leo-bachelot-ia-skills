@@ -1,0 +1,329 @@
+<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8">
+<title>Banc de test deck-builder</title>
+<style>/* ============================================================
+   DECK-BUILDER — FIXED 16:9 STAGE (mandatory base)
+   Slides are AUTHORED at 1920×1080 px. The whole stage is
+   scaled by ONE transform to fit the window; nothing inside
+   ever reflows. Letterbox/pillarbox instead of re-layout.
+   Paste this file's full contents into every generated deck.
+   ============================================================ */
+
+/* --- 0. reset ------------------------------------------------ */
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+/* --- 1. lock the browser viewport ---------------------------- */
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--stage-bg, #000);
+}
+
+/* --- 2. full-window deck viewport ---------------------------- */
+.deck-viewport {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background: var(--stage-bg, #000);
+}
+
+/* --- 3. the fixed design canvas ------------------------------
+   JS writes transform: translate(...) scale(...). Never set a
+   width/height here in %, vw or vh: this box IS the unit. */
+.deck-stage {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1920px;
+  height: 1080px;
+  overflow: hidden;
+  transform-origin: 0 0;
+  background: var(--slide-bg, #fff);
+}
+
+/* --- 4. slides stack inside the stage ------------------------
+   ⚠️ HARD RULE: hide inactive slides with visibility + opacity +
+   pointer-events, NEVER with display:none. A later
+   `.slide-content { display: flex }` (or any display rule on a
+   descendant selector that also matches .slide) would override
+   display and reveal every slide at once. visibility cannot be
+   overridden that way by accident. */
+.slide {
+  position: absolute;
+  inset: 0;
+  width: 1920px;
+  height: 1080px;
+  overflow: hidden;
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+  background: var(--slide-bg, #fff);
+}
+
+.slide.active {
+  visibility: visible;
+  opacity: 1;
+  pointer-events: auto;
+  z-index: 1;
+}
+
+/* --- 5. keep media inside authored bounds -------------------- */
+img, video, canvas, svg { max-width: 100%; max-height: 100%; }
+
+/* --- 6. deck chrome lives OUTSIDE the design system ---------- */
+.deck-chrome {
+  position: fixed;
+  z-index: 1000;
+  font: 500 13px/1 ui-sans-serif, system-ui, sans-serif;
+  color: var(--chrome-fg, rgba(255, 255, 255, 0.55));
+  user-select: none;
+}
+.deck-chrome--counter { left: 18px; bottom: 14px; }
+.deck-chrome--hint    { right: 18px; bottom: 14px; }
+
+/* --- 7. MOTION IS OPT-IN ------------------------------------
+   DEFAULT = FROZEN. A frozen deck must be fully legible in its
+   FINAL state: no information may depend on a movement. The
+   same markup animates only when the root carries
+   data-motion="on" — two states, one codebase, never two files.
+   Add `data-motion="on"` on <body> only when Léo asked for it. */
+.reveal { opacity: 1; transform: none; }
+
+body[data-motion="on"] .reveal {
+  opacity: 0;
+  transform: translateY(30px);
+  transition:
+    opacity var(--motion-duration, .6s) var(--motion-ease, cubic-bezier(.16, 1, .3, 1)),
+    transform var(--motion-duration, .6s) var(--motion-ease, cubic-bezier(.16, 1, .3, 1));
+}
+body[data-motion="on"] .slide.active .reveal { opacity: 1; transform: none; }
+body[data-motion="on"] .slide.active .reveal:nth-child(1) { transition-delay: .05s; }
+body[data-motion="on"] .slide.active .reveal:nth-child(2) { transition-delay: .15s; }
+body[data-motion="on"] .slide.active .reveal:nth-child(3) { transition-delay: .25s; }
+body[data-motion="on"] .slide.active .reveal:nth-child(4) { transition-delay: .35s; }
+body[data-motion="on"] .slide.active .reveal:nth-child(5) { transition-delay: .45s; }
+
+/* The geometry gate forces the final state before measuring, so
+   a measurement is never taken mid-transition. */
+body[data-gate] .reveal,
+body[data-gate] *,
+body[data-gate] *::before,
+body[data-gate] *::after {
+  opacity: 1 !important;
+  transform: none !important;
+  transition: none !important;
+  animation: none !important;
+}
+body[data-gate] .slide { opacity: 1 !important; }
+
+/* --- 8. print / PDF: one slide = one page -------------------- */
+@media print {
+  html, body { width: 1920px; height: auto; overflow: visible; background: #fff; }
+  .deck-viewport { position: static; overflow: visible; background: #fff; }
+  .deck-stage {
+    position: static;
+    width: auto; height: auto;
+    overflow: visible;
+    transform: none !important;
+    background: none;
+  }
+  .slide {
+    position: relative;
+    visibility: visible !important;
+    opacity: 1 !important;
+    pointer-events: auto !important;
+    width: 1920px;
+    height: 1080px;
+    break-after: page;
+    page-break-after: always;
+  }
+  .slide:last-child { break-after: auto; page-break-after: auto; }
+  .slide .reveal { opacity: 1 !important; transform: none !important; }
+  .deck-chrome { display: none !important; }
+}
+
+/* --- 9. reduced motion -------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+  body[data-motion="on"] .reveal { opacity: 1; transform: none; }
+}
+</style>
+<style>
+:root{--bg:#fdfae7;--surface:rgba(30,43,250,.05);--text:#111;--text-muted:#6b6b6b;
+--accent:#1e2bfa;--border:rgba(30,43,250,.2);--stage-bg:#0b0b0c;--slide-bg:var(--bg);
+--font-display:'Space Grotesk',system-ui,sans-serif;--font-body:Inter,system-ui,sans-serif;}
+.slide{padding:88px 120px;color:var(--text);font-family:var(--font-body);font-size:30px;line-height:1.5}
+.kicker{font-family:var(--font-display);font-size:29px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}
+h1{font-family:var(--font-display);font-size:120px;line-height:1.05;letter-spacing:-.02em}
+h2{font-family:var(--font-display);font-size:74px;line-height:1.1;letter-spacing:-.02em}
+h3{font-family:var(--font-display);font-size:43px;line-height:1.2}
+.stat{font-family:var(--font-display);font-size:86px;line-height:1;color:var(--accent)}
+/* cover: ONE tight cluster, centred — not three items flung to the corners */
+.cover{display:grid;height:100%;align-content:center;justify-items:start;row-gap:28px;max-width:1400px}
+.rule{width:280px;height:8px;background:var(--accent)}
+/* content: title, then the row fills the rest down to the bottom margin */
+.slide-body{display:grid;height:100%;grid-template-rows:auto 1fr;row-gap:56px}
+.card-row{display:grid;gap:40px;align-items:stretch;grid-template-columns:repeat(3,1fr)}
+.card{position:relative;overflow:hidden;background:var(--surface);border:1px solid var(--border);
+border-radius:16px;padding:48px;display:grid;grid-template-rows:auto auto 1fr auto;row-gap:24px}
+.card::before{content:"";position:absolute;inset:0 0 auto 0;height:8px;background:var(--accent)}
+/* --- slide 3 only: the defects the gate must catch --- */
+#bad .card{height:300px}
+#bad .tiny{font-size:17px}
+#bad .washed{color:#efe9c0}
+#bad .stamp{position:absolute;left:640px;top:400px;font-size:72px;font-family:var(--font-display);color:var(--accent)}
+</style>
+</head><body>
+<div class="deck-viewport"><main class="deck-stage">
+
+
+<section class="slide active">
+  <div class="cover">
+    <p class="kicker">Banc de test — deck-builder</p>
+    <h1>Une slide dont la géométrie tient</h1>
+    <div class="rule"></div>
+    <p>Bloc unique, centré, sans vide interne : le gate doit la laisser passer sans un seul défaut dur.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <div class="slide-body">
+    <h2>Trois cartes alignées sur une grille partagée</h2>
+    <div class="card-row">
+      <article class="card"><p class="kicker">Un</p><h3>Mesurer</h3>
+        <p>Chaque carte porte la même hauteur et les mêmes lignes de base. La variation de longueur de texte ne se voit qu'en bas de carte, jamais au milieu, parce que chaque bloc démarre sur une ligne partagée.</p>
+        <p class="stat">01</p></article>
+      <article class="card"><p class="kicker">Deux</p><h3>Corriger</h3>
+        <p>La correction porte sur la géométrie, pas sur le goût : on agrandit, on répartit, on ajoute de la matière. Recentrer un petit bloc dans une grande carte ne remplit rien, ça coupe le vide en deux.</p>
+        <p class="stat">02</p></article>
+      <article class="card"><p class="kicker">Trois</p><h3>Remesurer</h3>
+        <p>La boucle s'arrête à zéro défaut dur, avec un plafond d'itérations et un journal des deltas pour voir tout de suite si une correction en a cassé une autre ailleurs.</p>
+        <p class="stat">03</p></article>
+    </div>
+  </div>
+</section>
+
+<section class="slide" id="bad">
+  <div class="slide-body">
+    <h2>Slide piégée</h2>
+    <div class="card-row">
+      <article class="card"><p class="kicker">Débordement</p><h3>Trop de texte</h3>
+        <p>Ce paragraphe est nettement plus long que la hauteur allouée à la carte, il sort donc par le bas de son conteneur et doit être signalé comme un défaut dur par audit_overflow, sans quoi le gate ne sert à rien du tout.</p>
+        <p class="stat">01</p></article>
+      <article class="card"><p class="kicker">Plancher</p><h3>Trop petit</h3>
+        <p class="tiny">Ce texte est sous le plancher typographique.</p><p class="stat">02</p></article>
+      <article class="card"><p class="kicker">Contraste</p><h3>Trop clair</h3>
+        <p class="washed">Ce texte est presque de la couleur du fond.</p><p class="stat">03</p></article>
+    </div>
+  </div>
+  <p class="stamp">CHEVAUCHEMENT</p>
+</section>
+
+</main></div>
+<div class="deck-chrome deck-chrome--counter"></div>
+<script>/* ============================================================
+   DECK-BUILDER — the ONE stage controller.
+   There is exactly one scaler in a deck. Do not add a second
+   inline one (the source repo shipped a 619-line deck-stage.js
+   competing with an inline scaler; that is the bug this file
+   replaces). Paste this file's full contents into every deck.
+   ============================================================ */
+(function () {
+  'use strict';
+
+  const STAGE_W = 1920, STAGE_H = 1080;
+
+  class Deck {
+    constructor() {
+      this.stage = document.querySelector('.deck-stage');
+      this.slides = Array.from(document.querySelectorAll('.slide'));
+      this.i = 0;
+      this.counter = document.querySelector('.deck-chrome--counter');
+      if (!this.stage || !this.slides.length) return;
+      this._fit();
+      addEventListener('resize', () => this._fit(), { passive: true });
+      this._bindKeys();
+      this._bindWheel();
+      this._bindTouch();
+      addEventListener('hashchange', () => this._fromHash());
+      this._fromHash();
+    }
+
+    /* one transform, whole stage, centred; letterbox/pillarbox */
+    _fit() {
+      const k = Math.min(innerWidth / STAGE_W, innerHeight / STAGE_H);
+      const x = (innerWidth - STAGE_W * k) / 2;
+      const y = (innerHeight - STAGE_H * k) / 2;
+      this.stage.style.transform = `translate(${x}px, ${y}px) scale(${k})`;
+      this.scale = k;
+    }
+
+    go(n) {
+      this.i = Math.max(0, Math.min(n, this.slides.length - 1));
+      this.slides.forEach((s, j) => s.classList.toggle('active', j === this.i));
+      if (this.counter) this.counter.textContent = `${this.i + 1} / ${this.slides.length}`;
+      const h = `#${this.i + 1}`;
+      if (location.hash !== h) history.replaceState(null, '', h);
+    }
+    next() { this.go(this.i + 1); }
+    prev() { this.go(this.i - 1); }
+    _fromHash() { this.go((parseInt(location.hash.slice(1), 10) || 1) - 1); }
+
+    _bindKeys() {
+      addEventListener('keydown', (e) => {
+        if (e.target.isContentEditable) return;
+        const k = e.key;
+        if (k === 'ArrowRight' || k === 'ArrowDown' || k === ' ' || k === 'PageDown') { e.preventDefault(); this.next(); }
+        else if (k === 'ArrowLeft' || k === 'ArrowUp' || k === 'PageUp') { e.preventDefault(); this.prev(); }
+        else if (k === 'Home') { e.preventDefault(); this.go(0); }
+        else if (k === 'End') { e.preventDefault(); this.go(this.slides.length - 1); }
+      });
+    }
+
+    /* wheel: one notch = one slide, with a cooldown so a trackpad
+       inertia flick doesn't skip five slides */
+    _bindWheel() {
+      let lock = 0;
+      addEventListener('wheel', (e) => {
+        const t = performance.now();
+        if (t - lock < 450) return;
+        if (Math.abs(e.deltaY) < 12 && Math.abs(e.deltaX) < 12) return;
+        lock = t;
+        (e.deltaY > 0 || e.deltaX > 0) ? this.next() : this.prev();
+      }, { passive: true });
+    }
+
+    _bindTouch() {
+      let x0 = 0, y0 = 0;
+      addEventListener('touchstart', (e) => { x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; }, { passive: true });
+      addEventListener('touchend', (e) => {
+        const dx = e.changedTouches[0].clientX - x0;
+        const dy = e.changedTouches[0].clientY - y0;
+        if (Math.abs(dx) < 45 || Math.abs(dx) < Math.abs(dy)) return;
+        dx < 0 ? this.next() : this.prev();
+      }, { passive: true });
+    }
+
+    /* ---- gate API: used by bin/gate.mjs, harmless in normal use.
+       Un-scales the stage so every getBoundingClientRect() is read
+       directly in STAGE pixels, and freezes all motion. */
+    gateOn() {
+      document.body.setAttribute('data-gate', '');
+      this.stage.style.transform = 'none';
+    }
+    gateOff() {
+      document.body.removeAttribute('data-gate');
+      this._fit();
+    }
+  }
+
+  const boot = () => { window.__deck = new Deck(); };
+  document.readyState === 'loading'
+    ? document.addEventListener('DOMContentLoaded', boot)
+    : boot();
+})();
+</script></body></html>

@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<!-- ============================================================
+     DECK SKELETON — copy this file, fill it in, ship ONE file.
+     This is the `template.html` the source repo referenced 35 times
+     and never shipped. Everything is inline: no build, no CDN, no
+     npm. Fonts are the only external request (Google Fonts /
+     Fontshare) — inline them as base64 @font-face if the deck must
+     work offline.
+     Authored size is 1920×1080. Every length inside a slide is in
+     px at that size. No vw/vh/%/clamp inside the stage — the stage
+     is the unit, and the whole stage is scaled by stage.js.
+     ============================================================ -->
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{DECK_TITLE}}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="{{FONT_URL}}">
+<style>
+/* ============================================================
+   1. DESIGN TOKENS — from the chosen model's design.md.
+   ONE palette, ONE radius recipe, ONE type scale. No stray value
+   anywhere else in the file: if a colour is not here, it is a bug.
+   ============================================================ */
+:root {
+  /* colours */
+  --bg:            {{BG}};
+  --surface:       {{SURFACE}};
+  --text:          {{TEXT}};
+  --text-muted:    {{TEXT_MUTED}};
+  --accent:        {{ACCENT}};
+  --border:        {{BORDER}};
+
+  /* stage chrome (outside the design system) */
+  --stage-bg:      #0b0b0c;
+  --slide-bg:      var(--bg);
+  --chrome-fg:     rgba(255,255,255,.5);
+
+  /* type — px at the 1920 canvas. FLOORS: body 28, kicker 26,
+     never below 24. 1 pt (pptx) = 2 px (here). */
+  --font-display:  {{FONT_DISPLAY}};
+  --font-body:     {{FONT_BODY}};
+  --fs-h1:         104px;
+  --fs-h2:         64px;
+  --fs-h3:         40px;
+  --fs-body:       30px;
+  --fs-kicker:     26px;
+
+  /* space + shape */
+  --pad-x:         120px;
+  --pad-y:         88px;
+  --gap:           40px;
+  --radius:        16px;
+}
+
+/* ============================================================
+   2. STAGE — paste the FULL contents of assets/stage.css here.
+   ============================================================ */
+/* >>> PASTE stage.css <<< */
+
+/* ============================================================
+   3. SLIDE SYSTEM — the model's component grammar.
+   One `/* === NAME === */` comment block per component.
+   ============================================================ */
+.slide {
+  padding: var(--pad-y) var(--pad-x);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: var(--fs-body);
+  line-height: 1.5;
+}
+
+.kicker {
+  font-family: var(--font-display);
+  font-size: var(--fs-kicker);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+h1 { font-family: var(--font-display); font-size: var(--fs-h1); line-height: 1.05; letter-spacing: -.02em; }
+h2 { font-family: var(--font-display); font-size: var(--fs-h2); line-height: 1.1;  letter-spacing: -.02em; }
+h3 { font-family: var(--font-display); font-size: var(--fs-h3); line-height: 1.25; }
+
+/* === card ===
+   overflow:hidden + a ::before accent makes the top bar hug the
+   card's corner arc instead of overhanging it (doctrine rule 5). */
+.card {
+  position: relative;
+  overflow: hidden;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 44px;
+}
+.card--accent::before {
+  content: "";
+  position: absolute; inset: 0 0 auto 0;
+  height: 8px;
+  background: var(--accent);
+}
+
+/* === row of equal cards ===
+   grid + stretch = every card the same height; the shared inner
+   grid keeps kicker / title / body on ONE baseline across the row
+   (doctrine rule 1, cross-card alignment). Variation shows only at
+   the bottom. Never centre each card independently. */
+.card-row { display: grid; gap: var(--gap); align-items: stretch; }
+.card-row--3 { grid-template-columns: repeat(3, 1fr); }
+.card-row--4 { grid-template-columns: repeat(4, 1fr); }
+.card-row > .card {
+  display: grid;
+  grid-template-rows: auto auto 1fr auto;  /* kicker · title · body · meta */
+  row-gap: 20px;
+}
+.card .meta { align-self: end; color: var(--text-muted); font-size: var(--fs-kicker); }
+
+/* === slide body: fill the canvas ===
+   The content block spans the full height between the paddings and
+   distributes the slack, so nothing floats at the top over a void
+   (doctrine rule 1). */
+.slide-body {
+  display: grid;
+  height: 100%;
+  align-content: space-between;
+  row-gap: var(--gap);
+}
+</style>
+</head>
+
+<body>
+<!-- data-motion="on" ONLY when Léo asked for animation.
+     Default is frozen: the deck must be fully legible without it. -->
+<div class="deck-viewport">
+  <main class="deck-stage">
+
+    <!-- ===== 1 · cover ===== -->
+    <section class="slide active">
+      <div class="slide-body">
+        <p class="kicker reveal">{{KICKER}}</p>
+        <h1 class="reveal">{{TITLE}}</h1>
+        <p class="reveal">{{SUBTITLE}}</p>
+      </div>
+    </section>
+
+    <!-- ===== 2 · content, assertion title + 3 cards ===== -->
+    <section class="slide">
+      <div class="slide-body">
+        <h2 class="reveal">{{ASSERTION_TITLE}}</h2>
+        <div class="card-row card-row--3 reveal">
+          <article class="card card--accent">
+            <p class="kicker">{{C1_KICKER}}</p>
+            <h3>{{C1_TITLE}}</h3>
+            <p>{{C1_BODY}}</p>
+            <p class="meta">{{C1_META}}</p>
+          </article>
+          <article class="card card--accent">
+            <p class="kicker">{{C2_KICKER}}</p>
+            <h3>{{C2_TITLE}}</h3>
+            <p>{{C2_BODY}}</p>
+            <p class="meta">{{C2_META}}</p>
+          </article>
+          <article class="card card--accent">
+            <p class="kicker">{{C3_KICKER}}</p>
+            <h3>{{C3_TITLE}}</h3>
+            <p>{{C3_BODY}}</p>
+            <p class="meta">{{C3_META}}</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<!-- chrome sits OUTSIDE the stage: not designed, not printed -->
+<div class="deck-chrome deck-chrome--counter"></div>
+
+<script>
+/* >>> PASTE assets/stage.js <<< */
+</script>
+</body>
+</html>
