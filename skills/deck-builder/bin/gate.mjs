@@ -41,6 +41,7 @@ const T = Object.assign({
   card_void_hard: 0.30,   // au-delà : défaut dur (« jamais de gros vide dans une vignette »)
   margin_tol: 6,          // px d'encre toleres dans la marge de la slide
   card_void_min_frac: 0.35, // un vide doit faire >=35% de la LARGEUR et de la HAUTEUR
+  justify_min_cpl: 45,      // caracteres par ligne sous lesquels justifier est perdu d'avance
   justify_ratio_soft: 1.8,  // pire espace inter-mot / mediane
   justify_ratio_hard: 2.5,  // au-dela : rivieres, abandonner justify
   card_min_px2: 90000,    // en dessous, c'est une pastille, pas une vignette
@@ -183,6 +184,7 @@ for (const el of slide.querySelectorAll('*')) {
       fs: parseFloat(cs.fontSize) || 0,
       color: parse(cs.color),
       text: isText ? el.textContent.trim().slice(0, 60) : '',
+      elBox: box,
     });
   }
   if (isText || isMedia || painted) paint.push(box);
@@ -344,7 +346,8 @@ for (const el of slide.querySelectorAll('*')) {
   };
   if (bb.x1 <= bb.x0 || bb.y1 <= bb.y0) continue;
   const g = new Uint8Array(GW * GH);
-  mark(g, inside.flatMap(i => i.lines));
+  mark(g, inside.flatMap(i => i.lines.map(l => ({
+    x: i.elBox.x, right: i.elBox.right, y: l.y, bottom: l.bottom }))));
   const v = largestEmpty(g, bb);
   const cw = (bb.x1 - bb.x0 + 1) * C, ch = (bb.y1 - bb.y0 + 1) * C;
   const twoD = v && v.rect_px &&
@@ -386,8 +389,11 @@ for (const it of items) {
   if (kept.length < 3) continue;
   const med = kept[Math.floor(kept.length / 2)];
   const max = kept[kept.length - 1];
+  const chars = it.el.textContent.trim().length;
   justify.push({
     sel: it.sel, fs: +it.fs.toFixed(1), lines: lines.length,
+    chars_per_line: Math.round(chars / lines.length),
+    measure_px: Math.round(it.el.getBoundingClientRect().width),
     space_median_px: +med.toFixed(1), space_max_px: +max.toFixed(1),
     ratio: +(max / med).toFixed(2), text: it.text,
   });
@@ -517,7 +523,10 @@ for (const i of want) {
   }
   for (const j of (r.audit_justification || [])) {
     if (j.ratio < T.justify_ratio_soft) continue
-    const msg = `justification : espace inter-mot ×${j.ratio} (médiane ${j.space_median_px}px, pire ${j.space_max_px}px) à ${j.fs}px sur ${j.lines} lignes — ${j.sel}`
+    const why = j.chars_per_line < T.justify_min_cpl
+      ? ` — mesure trop étroite : ${j.chars_per_line} car./ligne sur ${j.measure_px}px (il en faut ≥${T.justify_min_cpl}). Élargir la colonne, ou passer en drapeau.`
+      : ''
+    const msg = `justification : espace inter-mot ×${j.ratio} (médiane ${j.space_median_px}px, pire ${j.space_max_px}px) à ${j.fs}px${why} — ${j.sel}`
     ;(j.ratio >= T.justify_ratio_hard ? H : S).push(msg)
   }
   for (const y of (r.audit_group_symmetry || [])) {
