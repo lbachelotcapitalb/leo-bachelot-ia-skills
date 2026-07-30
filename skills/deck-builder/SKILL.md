@@ -1,6 +1,6 @@
 ---
 name: deck-builder
-description: "Build or restructure polished, on-brand PowerPoint (.pptx) decks programmatically. Use when creating, redesigning, de-cluttering, or fixing the layout of a deck/pitch/plaquette — especially slides that feel empty, repetitive, or inconsistent. Provides a python-pptx kit, a fill-the-space layout rule, SVG icon embedding, and a local render-to-PNG check. Complements the base `pptx` skill."
+description: "Build or restructure polished, on-brand PowerPoint (.pptx) decks programmatically. Use when creating, redesigning, de-cluttering, or fixing the layout of a deck/pitch/plaquette — especially slides that feel empty, repetitive, or inconsistent, or when Léo asks for a vignette, a stat card, a slide element already seen in a reference. Provides a python-pptx kit, a fill-the-space layout rule, SVG icon embedding, a local render-to-PNG check, and a bridge to the visual-lab pattern library (~/visual-lab) whose vignettes carry measured benchmarks — build, MEASURE, render, fix, loop until every benchmark passes. Complements the base `pptx` skill."
 ---
 
 # deck-builder
@@ -11,12 +11,70 @@ consistent tokens, crisp vector icons). Theme-agnostic; works for any brand.
 
 Read this file fully, then use the helper modules in this folder.
 
+## Runtime
+
+`python-pptx` is NOT in the system python (PEP 668 blocks installing into it). Use the
+dedicated venv: `~/.venvs/deck-builder/bin/python`. If it is missing, recreate it with
+`python3 -m venv ~/.venvs/deck-builder && ~/.venvs/deck-builder/bin/pip install python-pptx pillow`.
+
 ## Files in this skill
 - `pptx_kit.py` — build helpers (text, shapes, discs, grid, the FILL RULE, icons, footer removal).
 - `svg_icons.py` — attach true vector SVG bodies (PNG fallback) to icon pictures.
 - `render_check.py` — render slides to PNG locally to self-verify (CLI: `python render_check.py deck.pptx 2,3 /tmp`).
 - `references/structure.md` — editorial rules (assertion titles, one-idea, de-dup, deck architecture).
 - `references/design_tokens.md` — palettes, style recipes, type/space scales (adapted from MiniMax-AI/skills, MIT).
+- `~/visual-lab/` — **the pattern library** (outside this skill, shared with the web/HTML side):
+  `INDEX.md` (readable catalogue), `index.json` (machine-readable: ratios, tokens, benchmarks),
+  `kit/vl_pptx.py` (the .pptx emitters + `audit()`), `bin/check.mjs` (the HTML-side measurer).
+  See the section below — this is the FIRST place to look for any card, vignette or title
+  treatment, before writing one from scratch.
+
+## Use the library before inventing (visual-lab)
+
+`~/visual-lab` holds vignettes reverse-engineered from real reference decks: each one is a
+documented intention, a set of RATIOS, and a list of **benchmarks** — measurable assertions
+(chamfer ÷ width, type-size jump, contrast, no-overflow) that the vignette must satisfy. They
+exist so a slide element is never re-guessed twice, and so "it looks fine" is not the only
+proof available.
+
+```bash
+cd ~/visual-lab && node bin/index.mjs            # index ALWAYS regenerated first (see below)
+grep -n "vignette\|stat\|card" INDEX.md          # what exists, with employer / éviter
+node bin/search.mjs "stat accent"                # full-text, prints the HTML fragment
+node bin/check.mjs pat-stat-block-accent         # the benchmarks, measured in a real browser
+```
+
+Then build the .pptx from the same source of truth:
+
+```python
+import sys; sys.path.insert(0, str(Path.home() / "visual-lab" / "kit"))
+import vl_pptx as vl
+m = vl.stat_block(slide, 0.6, 2.6, 3.6, 2.9, "Potential", "156%", "Compound growth …")
+vl.audit([m])          # raises on any deviation from the pattern's benchmarks
+```
+
+Three rules that make this work, all learned the hard way:
+
+1. **The index is generated, never hand-edited.** `node bin/index.mjs` rewrites `INDEX.md` and
+   `index.json` from `patterns/*.json`. Run it BEFORE reading the library and AFTER touching
+   any pattern — `vl_pptx` reads `index.json`, so a stale index makes an emitter fail with a
+   "geometry.<key> absent" error whose real cause is the missing re-index.
+2. **Pixels don't travel, ratios do.** A fragment is tuned for a 1600px-wide slide; converted
+   literally, its 17px body becomes 10.2pt — below `FLOOR_BODY_PT`. `vl.scale()` anchors the
+   scale on the body in POINTS (14 by default) and derives everything else from the pattern's
+   ratios. Never copy a px value from a fragment into a slide.
+3. **Two checkers, one set of assertions.** `bin/check.mjs` measures the HTML in a browser,
+   `vl.audit()` measures what was actually placed on the slide. When one catches something the
+   other misses, add the assertion on BOTH sides — that is how the body contrast on the orange
+   accent (2.77:1, below the 3:1 large-text floor) was caught: the .pptx audit had the check,
+   the HTML harness didn't.
+
+**Adding to the library is part of the job.** When you design a vignette that works and could
+serve again, extract it: `patterns/<id>.json` (intent, when to use, when to AVOID, vars,
+`geometry.root/ratios/type_px/pad_ratio`, `benchmarks`) + `<id>.html`, then `node bin/index.mjs`
+(it refuses to index an incomplete pattern), `node bin/check.mjs <id>`, and a look at
+`node bin/render.mjs --pattern <id>`. A vignette that only lives inside one .pptx is a vignette
+you will rebuild by hand next quarter.
 
 ## The non-negotiable rules
 
@@ -216,6 +274,9 @@ defect to fix before handing back — exactly like sub-floor text (rule 4).
 
 ## Workflow
 
+0. **Shop the library first.** `cd ~/visual-lab && node bin/index.mjs && cat INDEX.md`. If a
+   pattern covers the element you need, use its emitter from `kit/vl_pptx.py` rather than
+   laying out shapes by hand — you inherit its ratios AND its benchmarks.
 1. **Read** `references/structure.md` and `references/design_tokens.md`.
 2. **Outline** the deck: for each slide write its assertion title + the single
    idea + the exhibit type. Run the ghost-deck test. Build the de-dup map
@@ -239,6 +300,11 @@ defect to fix before handing back — exactly like sub-floor text (rule 4).
    Default: make the change, let the user judge the real render in PowerPoint.
 7. **Verify before handing back** — the autonomous QA gate (silent). Run the
    programmatic audits, THEN confirm their suspects in a faithful render:
+   - `vl_pptx.audit(measures)` — MANDATORY whenever a visual-lab emitter was used. It replays
+     the pattern's own benchmarks against what you actually placed (ratios, contrast, type
+     floor, chamfer vs the card's short side) and RAISES on the first deviation. Fix and
+     re-run: this is a loop, not a report. It is the only audit that knows the reference
+     charter's proportions — `audit_text_sizes` and friends only know the generic floors.
    - `pptx_kit.audit_text_sizes(prs)` — no sub-floor text (rule 4).
    - `pptx_kit.audit_overlaps(prs)` — no picture colliding with text/another
      picture (rule 4b / the logo-on-copy class). 'hard' hits are high-signal;
@@ -296,6 +362,12 @@ full-bleed picture (extract it from a sibling content slide's `<p:bg>` blip).
   copies (the user dislikes it); work on the single file. If recovery is ever
   needed, the rebuild scripts + the source deck regenerate it.
 - python-pptx `save()` strips the svg content-type → always `fix_svg_content_type`.
+- ⚠️ `shape.shadow.inherit = False` does NOT remove the drop shadow. It writes an empty
+  `<a:effectLst/>`, but python-pptx also emits a `<p:style>` whose `effectRef` points at the
+  theme's shadow — LibreOffice (and PowerPoint themes) apply it, and every flat card ships with
+  a grey shadow on its bottom-right. On a sharp-cornered charter that reads as a defect. Remove
+  the `<p:style>` element itself (`vl_pptx.flatten()` does fill + no line + no shadow + style
+  removal in one call). Caught on a faithful render, invisible in the PIL proxy.
 - ⚠️ SHARED ICON/LOGO MEDIA — recolour LEAKS across slides. A deck reuses the same
   `ppt/media/imageN.svg` (and its PNG fallback) on multiple slides. If you recolour
   that media in place to fit ONE slide's chip (e.g. whiten a glyph for a deep-teal
