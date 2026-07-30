@@ -137,7 +137,7 @@ same numbers: 17 % dead space is a defect in a dense report and a deliberate bre
 
 | benchmark | for | key values |
 |---|---|---|
-| `lecture-dense` | report, review, diagnostic, client deliverable — read alone | body ≥ 28 px, dead ≤ 12 %, occupancy ≥ 55 % |
+| `lecture-dense` | report, review, diagnostic, client deliverable — read alone | body ≥ 30 px, dead ≤ 12 %, occupancy ≥ 55 %, card void ≤ 22 % |
 | `orateur` | projected and narrated, one idea per slide | body ≥ 36 px, dead ≤ 30 %, occupancy ≥ 20 % |
 
 `lecture-dense` is calibrated on a real deck (`decks/sante-si-karto.html`, 10 slides) and its
@@ -159,8 +159,12 @@ written in.
 |---|---|---|
 | `audit_overlaps` | **hard** | intersection area of every pair of visible INK elements (text-bearing elements + img/svg/video/canvas). Exhaustive, no sampling. DOM nesting is excluded — a child inside its parent is not an overlap. Fires above 400 px² AND 2 % of the smaller element. |
 | `audit_overflow` | **hard** | three ways out: a container clipping its own content (`scrollHeight > clientHeight` — the classic card swallowing its copy), a child escaping its container's padding box, anything leaving the 1920×1080 canvas. |
-| `audit_text_sizes` | **hard** below 24 px, soft 24-28 | computed font-size per text element, against the floors of rule 4. |
+| `audit_text_sizes` | **hard** below 24 px, soft under the floor | computed font-size per text element. A **kicker** (uppercase and/or tracked ≥ 4 % em) is detected and judged against the kicker floor (26), not the body floor — without that split, raising the body floor buries the report in noise (59 findings → 4 on the real deck). |
 | contrast | **hard** | WCAG ratio, foreground composited over the real effective background (walks up the ancestors). ≥ 4.5:1, or 3:1 above 56 px. If a gradient or image is in the way it reports `null` — it says "I don't know" rather than inventing a number. |
+| `audit_card_voids` | **hard** past 30 % | each card is re-rasterised on its OWN ink and measured against its OWN area — the slide-level measure misses it, because at slide scale a half-empty card still reads as a full painted surface. A text block reserves its column, so a ragged right edge or the blank beside a big figure is not counted; a real hole is two-dimensional. |
+| `audit_justification` | soft ≥ ×1.8, **hard** ≥ ×2.5 | per justified paragraph: the measure in **characters per line**, the median and worst inter-word space, and their ratio. Below ~45 characters justification is lost before it starts — the count explains, the ratio decides. |
+| `audit_group_symmetry` | **hard** | sibling cards in a row must share one box size, and one font-size per role. Catches `1fr` (= `minmax(auto,1fr)`) letting a wide-content column grow — use `minmax(0,1fr)`. |
+| in-slide margin | **hard** | no ink in the slide's padding. A card is a grid item, so `min-height:auto` stops it shrinking: it GROWS out of its band, its content stays "inside it", and the container check sees nothing. |
 | `audit_deadspace` | soft (hard with `--strict`) | the slide is rasterised on a 20 px grid, ink cells marked, then the **largest maximal empty rectangle inside the ink bounding box** is found. This is FILL THE SPACE, measured. Reported as a fraction and as `[x, y, w, h]` so it is actionable. |
 | `audit_vbalance` | soft (hard with `--strict`) | the void above the ink vs the void below it, in px (rule 1). |
 | occupancy / margins / centre-of-ink | reported | painted-surface occupancy, the four margins, left-right symmetry, and the offset between the ink's centre of gravity and the canvas centre. |
@@ -185,6 +189,11 @@ objective defect and blocks. `--strict` promotes them when you want a deck to be
 
 Two defects shipped past a full PASS on the first real deck, and both are invisible to geometry:
 
+0. **The ink of a text element is its LINES, not its box.** A `<p>` in a `1fr` grid row is
+   stretched to the whole row: its box fills exactly the void the eye sees, so every
+   measurement built on boxes reports a full card. The census goes through
+   `Range.getClientRects()`. This one was found by Léo's eye, not by the gate — which is why
+   the two remaining items below still need a human look.
 1. **An element that renders but paints nothing.** `<span class="fill">` inside a bar track is an
    *inline* element, so `height: 100%` does nothing: twelve bars measured perfectly and showed
    empty. Geometry was valid, the chart was blank.

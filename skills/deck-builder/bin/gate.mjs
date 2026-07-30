@@ -45,6 +45,10 @@ const T = Object.assign({
   justify_min_cpl: 45,      // caracteres par ligne sous lesquels justifier est perdu d'avance
   justify_ratio_soft: 1.8,  // pire espace inter-mot / mediane
   justify_ratio_hard: 2.5,  // au-dela : rivieres, abandonner justify
+  center_tol: 12,           // px d'ecart tolere entre les deux cotes
+  center_fullwidth_frac: 0.92, // au-dela, le bloc occupe sa colonne : rien a centrer
+  underuse_min_col: 1200,   // on ne juge la largeur perdue que dans une colonne large
+  underuse_frac: 0.85,      // sous ce taux d'occupation de la colonne : bride sans raison
   card_min_px2: 90000,    // en dessous, c'est une pastille, pas une vignette
 }, A.thresholds || {})
 
@@ -116,14 +120,11 @@ const MEDIA = new Set(['IMG', 'SVG', 'VIDEO', 'CANVAS', 'PICTURE']);
    collides with its neighbour on empty air. */
 const lineRects = (el) => {
   const out = [];
-  for (const n of el.childNodes) {
-    if (n.nodeType !== 3 || !n.textContent.trim()) continue;
-    const rg = document.createRange();
-    rg.selectNodeContents(n);
-    for (const r of rg.getClientRects()) {
-      if (r.width > 0.5 && r.height > 0.5) {
-        out.push({ x: r.x, y: r.y, w: r.width, h: r.height, right: r.right, bottom: r.bottom });
-      }
+  const rg = document.createRange();
+  rg.selectNodeContents(el);
+  for (const r of rg.getClientRects()) {
+    if (r.width > 0.5 && r.height > 0.5) {
+      out.push({ x: r.x, y: r.y, w: r.width, h: r.height, right: r.right, bottom: r.bottom });
     }
   }
   return out;
@@ -433,6 +434,77 @@ for (const row of slide.querySelectorAll('*')) {
   }
 }
 
+/* ---------- audit_card_centering -------------------------------------
+   « Les elements dans les vignettes doivent toujours etre centres, meme
+   ecart des deux cotes, par controle maths. Sauf la numerotation, qui
+   peut etre au milieu ou a une extremite. » (Leo, 30/07)
+   Pour chaque vignette : on prend sa boite de CONTENU (padding deduit)
+   et, pour chaque element d'encre, l'ecart a gauche et l'ecart a droite.
+   Trois etats acceptes : pleine largeur (le bloc occupe sa colonne),
+   centre (les deux ecarts se valent), ou exempte (numerotation, repere
+   par une classe contenant « num » ou « n »). Tout le reste est un
+   element pose d'un cote, et c'est un defaut. */
+const centering = [];
+for (const el of slide.querySelectorAll('*')) {
+  const cs = getComputedStyle(el);
+  if (cs.display === 'none' || cs.visibility === 'hidden') continue;
+  const bgc = parse(cs.backgroundColor);
+  if (!((bgc && bgc.a > 0.02) || parseFloat(cs.borderTopWidth) > 0)) continue;
+  const r = el.getBoundingClientRect();
+  if (r.width * r.height < T.card_min_px2) continue;
+  const inside = items.filter(i => el.contains(i.el) && i.el !== el);
+  if (inside.length < 2) continue;
+  const cl = r.x + parseFloat(cs.borderLeftWidth) + parseFloat(cs.paddingLeft);
+  const cr = r.right - parseFloat(cs.borderRightWidth) - parseFloat(cs.paddingRight);
+  const cwid = cr - cl;
+  if (cwid <= 0) continue;
+  for (const it of inside) {
+    if (getComputedStyle(it.el).display === 'inline') continue;      // inline dans une phrase
+    const cls = String(it.el.className || '').toLowerCase();
+    if (/num|chiffre|stat|hero|gain/.test(cls)) continue;             // numerotation : exemptee
+    const u = union(it.lines);
+    if (!u) continue;
+    const gl = u.x - cl, gr = cr - u.right;
+    if ((u.right - u.x) >= cwid * T.center_fullwidth_frac) continue; // occupe sa colonne
+    if (Math.abs(gl - gr) <= T.center_tol) continue;                 // centre
+    centering.push({ card: path(el), sel: it.sel,
+      left_px: Math.round(gl), right_px: Math.round(gr),
+      delta_px: Math.round(Math.abs(gl - gr)), text: it.text });
+  }
+}
+
+/* ---------- audit_measure_underuse -----------------------------------
+   « Le paragraphe s'arrete trop tot vers la droite, ca n'a pas de sens,
+   il peut s'etendre davantage. » Un bloc de texte qui se plie sur
+   plusieurs lignes alors que sa colonne est large gaspille la largeur :
+   il a ete bride (max-width, width en dur) sans raison de lecture. On ne
+   regarde que les colonnes vraiment larges, pour ne pas confondre avec
+   une vignette etroite, qui est un choix de grille. */
+const underuse = [];
+for (const it of items) {
+  if (it.kind !== 'text' || it.lines.length < 2) continue;
+  const par = it.el.parentElement;
+  if (!par) continue;
+  const pcs = getComputedStyle(par);
+  const pr = par.getBoundingClientRect();
+  const avail = pr.width - parseFloat(pcs.paddingLeft) - parseFloat(pcs.paddingRight);
+  if (avail < T.underuse_min_col) continue;
+  const me = it.el.getBoundingClientRect();
+  const sideBySide = [...par.children].some(sib => {
+    if (sib === it.el) return false;
+    const b = sib.getBoundingClientRect();
+    if (b.width < 1 || b.height < 1) return false;
+    const vOverlap = Math.min(me.bottom, b.bottom) - Math.max(me.y, b.y) > 4;
+    const hDisjoint = b.right <= me.x + 4 || b.x >= me.right - 4;
+    return vOverlap && hDisjoint;
+  });
+  if (sideBySide) continue;                 // la bande est partagee : rien de perdu
+  const w = me.width;
+  if (w >= avail * T.underuse_frac) continue;
+  underuse.push({ sel: it.sel, width_px: Math.round(w), avail_px: Math.round(avail),
+    used_pct: Math.round(w / avail * 100), lines: it.lines.length, text: it.text });
+}
+
 /* ---------- occupancy, margins, symmetry, vbalance ------------------ */
 let occ = 0; for (let k = 0; k < paintGrid.length; k++) occ += paintGrid[k];
 let sx = 0, sy = 0, n = 0;
@@ -454,6 +526,8 @@ return {
   audit_card_voids: cardVoids,
   audit_justification: justify,
   audit_group_symmetry: symmetry,
+  audit_card_centering: centering,
+  audit_measure_underuse: underuse,
   audit_vbalance: m ? { top_px: m.top, bottom_px: m.bottom, delta_px: Math.abs(m.top - m.bottom) } : null,
   space: {
     occupancy: +(occ / (GW * GH)).toFixed(3),
@@ -532,6 +606,12 @@ for (const i of want) {
       : ''
     const msg = `justification : espace inter-mot ×${j.ratio} (médiane ${j.space_median_px}px, pire ${j.space_max_px}px) à ${j.fs}px${why} — ${j.sel}`
     ;(j.ratio >= T.justify_ratio_hard ? H : S).push(msg)
+  }
+  for (const c of (r.audit_card_centering || [])) {
+    H.push(`centrage vignette : ${c.sel} pose d'un cote — ${c.left_px}px a gauche vs ${c.right_px}px a droite (ecart ${c.delta_px}px) dans ${c.card} — "${c.text}"`)
+  }
+  for (const u of (r.audit_measure_underuse || [])) {
+    H.push(`largeur perdue : ${u.sel} n'occupe que ${u.used_pct}% de sa colonne (${u.width_px}px sur ${u.avail_px}px) et se plie sur ${u.lines} lignes — "${u.text}"`)
   }
   for (const y of (r.audit_group_symmetry || [])) {
     H.push(`symétrie de groupe : « ${y.role} » varie dans ${y.group} → ${y.values.join(' / ')}`)
