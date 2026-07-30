@@ -260,8 +260,44 @@ floor, two units:
 | absolute floor — nothing legible below | 12 pt | 24 px |
 | titles | 28–36 pt | 56–72 px |
 
-**These are floors, not suggestions.** If text must shrink below the floor to fit, **cut
-content — don't shrink**. NEVER let text spill past its container's bottom. For a row of
+**These are floors, not TARGETS.** A number that merely clears the floor is not thereby
+legible: 30 px under a 120 px figure on a cover reads as small, because the eye compares it to
+its neighbour, not to a table. Two consequences (Léo, 30/07/2026: « il faut un seuil minimum de
+taille pour la lisibilité du lecteur ; il faut construire des choses visuelles surtout, ça peut
+être plus gros ») :
+
+- **A stand-alone caption — under a big figure, on a cover, in a hero band — belongs to the
+  display ladder, not the body ladder: ≥ 40 px.** The body floor governs text inside a card,
+  where the reader is already close in.
+- **Build visual objects, not loose text.** A figure + a caption floating on the background is
+  weaker and smaller than the same content as a real vignette (surface, border, its own
+  padding). When a slide feels thin, turn the content into components and let them grow — do
+  not simply nudge the type up two points.
+
+If text must shrink below the floor to fit, **cut content — don't shrink**.
+
+### 4c. JUSTIFIED TEXT — an arbitrage, decided by measurement
+
+Setting a paragraph flush on both edges puts four requirements in competition: the justified
+form itself, inter-word spaces that stay even, regular line rhythm, and one shared type size
+across all the vignettes of a group. They cannot all win. **Work the micro (the size) from the
+macro (the grid), and if the justified form is unreachable, drop IT and spend the compromise on
+the other three** — never the reverse, because a river of white is more visible than a ragged
+right edge.
+
+The arbitration is measured, not eyeballed. `bin/gate.sh` reports, per justified paragraph, the
+**measure in characters per line** and the ratio of the widest inter-word space to the median:
+
+- **below ~45 characters per line, justification is lost before it starts.** A 4-up vignette row
+  on the 1920 canvas gives 16-20 characters — measured ×3.29, a 70 px hole between two words.
+  Either widen the column (a macro change: 4 cards → 2) or set ragged-right.
+- above that measure it usually costs nothing: the same deck's full-width banners justify at
+  59-75 characters per line with a ratio of ×1.00 — no river at all.
+- the ratio decides, the character count explains. A narrow-ish callout at 35 characters and
+  ×1.17 is fine; the guideline flags the risk, the measurement settles it.
+
+Loop it micro ↔ macro: change the size, re-measure; if the size cannot save it, change the grid;
+if the grid must stay, abandon the justified form. NEVER let text spill past its container's bottom. For a row of
 equal cards, size all bodies at the one size at which the LONGEST body fits, applied
 uniformly. If the longest body still overflows, the card is too small or the copy too long
 → shorten copy or enlarge the card.
