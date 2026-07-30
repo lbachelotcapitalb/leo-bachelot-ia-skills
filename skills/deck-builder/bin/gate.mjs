@@ -33,6 +33,7 @@ const T = Object.assign({
   vbalance_hard: 120,    // idem
   floor_hard: 24,        // px, canvas — nothing legible below
   floor_soft: 28,        // px, canvas — body floor (rule 4)
+  floor_kicker: 26,      // px, canvas — kicker / eyebrow (capitales, interlettrage)
   large_text: 56,        // px, canvas — above this, WCAG "large"
   contrast_large: 3.0,
   contrast_small: 4.5,
@@ -463,10 +464,13 @@ return {
     } : null,
   },
   text: items.filter(i => i.kind === 'text').map(i => {
+    const ics = getComputedStyle(i.el);
+    const ls = parseFloat(ics.letterSpacing);
+    const kicker = ics.textTransform === 'uppercase' || (ls > 0 && ls >= i.fs * 0.04);
     const bg = bgOf(i.el);
     const fg = i.color ? (i.color.a < 1 && !bg.unknown ? over(i.color, bg) : i.color) : null;
     return {
-      sel: i.sel, fs: +i.fs.toFixed(1), text: i.text,
+      sel: i.sel, fs: +i.fs.toFixed(1), text: i.text, kicker,
       contrast: (bg.unknown || !fg) ? null : +ratio(fg, bg).toFixed(2),
     };
   }),
@@ -536,8 +540,9 @@ for (const i of want) {
     S.push(`occupation ${Math.round(r.space.occupancy * 100)}% < ${Math.round(T.occupancy_min * 100)}% attendu par le benchmark`)
   }
   for (const t of r.text) {
-    if (t.fs < T.floor_hard) H.push(`type ${t.fs}px < ${T.floor_hard} floor — ${t.sel} "${t.text}"`)
-    else if (t.fs < T.floor_soft) S.push(`type ${t.fs}px < ${T.floor_soft} body floor (ok if a real kicker) — ${t.sel} "${t.text}"`)
+    const floor = t.kicker ? T.floor_kicker : T.floor_soft
+    if (t.fs < T.floor_hard) H.push(`type ${t.fs}px < ${T.floor_hard} plancher absolu — ${t.sel} "${t.text}"`)
+    else if (t.fs < floor) S.push(`type ${t.fs}px < ${floor} plancher ${t.kicker ? 'kicker' : 'de corps'} — ${t.sel} "${t.text}"`)
     if (t.contrast !== null) {
       const need = t.fs >= T.large_text ? T.contrast_large : T.contrast_small
       if (t.contrast < need) H.push(`contrast ${t.contrast}:1 < ${need}:1 at ${t.fs}px — ${t.sel} "${t.text}"`)

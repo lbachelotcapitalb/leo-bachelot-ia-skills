@@ -11,6 +11,9 @@
     "occupancy_min": 0.2,
     "card_void_soft": 0.28,
     "card_void_hard": 0.4,
-    "margin_tol": 6
+    "margin_tol": 6,
+    "justify_min_cpl": 45,
+    "justify_ratio_soft": 1.8,
+    "justify_ratio_hard": 2.5
   }
 }

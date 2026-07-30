@@ -26,7 +26,7 @@ for audit, needle in [
     ("audit_overlaps",   "overlap "),
     ("audit_overflow (clipped)",  "clips its own content"),
     ("audit_overflow (escapes)",  "escapes "),
-    ("audit_text_sizes (floor)",  " floor — "),
+    ("audit_text_sizes (floor)",  " plancher absolu — "),
     ("audit_text_sizes (contrast)", "contrast "),
 ]:
     if needle not in hard: fails.append(f"slide 3: {audit} did not fire")

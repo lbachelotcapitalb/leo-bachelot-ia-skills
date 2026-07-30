@@ -5,10 +5,12 @@
   "observed": {
     "occupancy": "43 % (slide de citation) à 69 %, médiane 60 %",
     "deadspace_paint": "5 % à 11 %",
-    "note": "la couverture tient à 57 % et la clôture à 49 % : un deck de lecture n'a pas de slide sous ~43 %"
+    "note": "la couverture tient à 57 % et la clôture à 49 % : un deck de lecture n'a pas de slide sous ~43 %",
+    "justification": "vignettes 16-20 car./ligne -> drapeau obligatoire ; bannieres pleine largeur 59-75 car./ligne -> justifie a x1.00",
+    "legende_hero": "une legende sous un grand chiffre en couverture : 40 px (le plancher de corps a 28-30 px y lit trop petit)"
   },
   "thresholds": {
-    "floor_soft": 28,
+    "floor_soft": 30,
     "deadspace_soft": 0.12,
     "deadspace_hard": 0.25,
     "vbalance_soft": 60,
@@ -16,6 +18,9 @@
     "occupancy_min": 0.55,
     "card_void_soft": 0.22,
     "card_void_hard": 0.3,
-    "margin_tol": 6
+    "margin_tol": 6,
+    "justify_min_cpl": 45,
+    "justify_ratio_soft": 1.8,
+    "justify_ratio_hard": 2.5
   }
 }
