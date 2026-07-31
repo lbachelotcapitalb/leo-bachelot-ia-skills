@@ -57,8 +57,60 @@ This is the skeleton of every job. Concretely:
    before the geometric audit passes (see "Vérification" below). Handing back a deck with
    an unmeasured overlap is the failure mode this skill exists to kill.
 
+7. **Argumentaire** — ship, alongside the deck, a `<deck>.ARGUMENTAIRE.md` that justifies
+   **every element, one by one** (Léo, 6th review, 30/07/2026: « tu dois toujours pouvoir
+   argumenter ce que tu produis, chaque élément que tu poses »). See the next section.
+
 Steps 4 and 5 collapse into nothing when Léo has already validated a direction in a
-previous session on the same deck — reuse it, don't re-ask.
+previous session on the same deck — reuse it, don't re-ask. Step 7 never collapses.
+
+## L'ARGUMENTAIRE — every element defended, one by one
+
+**A deck is not handed back with only a gate report.** The gate proves nothing overlaps; it
+says nothing about WHY this background, this colour, this size, this shape on this slide.
+Léo reviews decisions, not pixels, and a decision he cannot interrogate is a decision he
+cannot overrule. So the deliverable is a pair: `deck.html` + `deck.ARGUMENTAIRE.md`.
+
+Write it **as you build**, not after — an argument reconstructed at the end is a
+justification, and a justification hides the choices that were never made deliberately.
+The test: if an element cannot be defended in one line, it should not be on the slide.
+
+Structure (one file, in this order):
+
+| section | what it holds |
+|---|---|
+| 0 · Socle | canvas, scale factor k, template, type scale, palette tokens — each token with its reason and its measured value |
+| 1 · Règles transverses | the doctrine rules actually load-bearing in THIS deck, each with the slide that forced it |
+| 2 · Rythme | the section cut and why each section carries the background it carries |
+| 3 · Slide par slide | one block per slide: every element (eyebrow, pill, title, exhibit, each card, each colour) → what it is, why it's there, why THAT colour/size/shape |
+| 4 · Valeurs calibrées | every number found by measurement rather than choice (a padding, a font-size), with the sweep that produced it |
+| 5 · Refusé | what was considered and rejected, and why — the most useful section on re-read |
+
+**And it is REPLAYED against the deck, in a loop, until the two agree.** (Léo, 6th review:
+« loop check de l'argument jusqu'à modification visuelle et argumentation rattachée
+cohérente ».) Ship a small checker beside the deck that re-asserts every claim against the
+source — the CSS cascade (read the LAST declaration, not the first, or you argue about a dead
+rule), the gate's JSON, and the slide markup — then look at the rendered pages with the
+argument in hand. Loop: fix the deck OR fix the argument, re-measure, re-render, re-read.
+
+The three kinds of gap it finds, none of which the gate can see:
+1. **A figure quoted from memory.** Four were wrong on the reference deck (53 vs 59-75
+   car./line, 66 vs ~90, 9,34:1 vs 11,2, a worst-contrast that only held for reading text).
+2. **An argument that does not describe the render.** « symmetric with slide 4 » — one slide
+   grouped its cards in a panel, the other didn't. The diptych was claimed, not built.
+3. **An exhibit whose numbers don't add up to the figure beside it.** A big « 61/154 » sat
+   next to a list totalling 93. The eye reads a list beside a figure as ITS breakdown; this
+   one wasn't. Assert the sum in the checker — it is the cheapest lie to ship and the most
+   expensive to be caught on.
+
+Three rules for the content:
+- **A colour is argued per slide, not once globally.** « accent = cobalt » is a token, not an
+  argument. Why THIS figure is green on THIS slide, and why the neighbouring one is not, is.
+- **Cite the measurement when one exists** (« 3.72:1 under card+panel », « the only padding
+  where the five labels hold on 4 lines »). A calibrated value is stated as calibrated —
+  never dressed up as taste.
+- **Say what was refused.** Numbering that would have implied a false order, a `min-height`
+  that would only have silenced an audit, a centring that would have broken the reading edge.
 
 ## Use the library before inventing (visual-lab)
 
@@ -70,9 +122,9 @@ proof available. It is shared with the HTML/web side, so it serves both backends
 
 ```bash
 cd ~/visual-lab && node bin/index.mjs            # index ALWAYS regenerated first (see below)
-grep -n "vignette\|stat\|card" INDEX.md          # what exists, with employer / éviter
+sed -n "/## Catalogue/,/## Détail/p" INDEX.md     # the routing table: one line per pattern
 node bin/search.mjs "stat accent"                # full-text, prints the HTML fragment
-node bin/check.mjs pat-stat-block-accent         # the benchmarks, measured in a real browser
+node bin/check.mjs card-03-stat-accent           # the benchmarks, measured in a real browser
 ```
 
 Three rules that make this work, all learned the hard way:
@@ -111,7 +163,7 @@ cd ~/visual-lab
 # Pexels — contemporary editorial photography. Key lives in Bitwarden, never in a settings file.
 node ~/Documents/Claude/Projects/cartographie-it/bw-get.mjs \
   --item "Pexels — API" --field PEXELS_API_KEY --as PEXELS_API_KEY \
-  --exec 'node bin/photos.mjs --slug <deck> --palette sys-10 --n 4 \
+  --exec 'node bin/photos.mjs --slug <deck> --palette ref-10-campaign-board-red --n 4 \
     --query "empty office golden hour" --query "hands on keyboard"'
 
 # The Met — public-domain artworks (CC0). NO KEY. Texture, matter, backgrounds.
@@ -143,6 +195,13 @@ what is versioned, and it is enough to re-download an identical harvest.
 
 These are hard constants, medium-agnostic. Apply them without being asked. Each backend
 reference names the helper that enforces the rule in that medium.
+
+> **The laws themselves are the house's, not this skill's.** They are listed once, medium-free,
+> in [`~/visual-lab/DOCTRINE.md`](../../../visual-lab/DOCTRINE.md) — which also names, per law,
+> what measures it in each medium (and where nothing does yet). What follows here is their SLIDE
+> application: the thresholds, the units, the `bin/gate.sh` audits. Read DOCTRINE.md when you
+> produce anything that is not a slide — a mailing, a flyer, a post — so the same laws travel
+> without dragging the slide numbers with them.
 
 ## 1. FILL THE SPACE — no idle voids
 
@@ -190,6 +249,41 @@ slide-level dead-space measure misses it entirely. Three consequences, all manda
 `bin/gate.sh` measures this: `audit_card_voids` re-rasterises each card on its own ink and
 flags a card that is more than ~22 % empty (hard past 30 %).
 
+**4. INSIDE a vignette, every element is CENTRED — equal gap on both sides, checked
+arithmetically.** (Léo, 30/07/2026.) The only exception is **numbering**, which may sit centred
+or at one extremity. **What is centred is the BLOCK, not the words.** A paragraph KEEPS its
+reading direction — left-aligned, or justified when the measure allows — and it is its BOX that
+sits equidistant from both edges. (Léo, 4th review, 30/07/2026: « garder justifié + gauche les
+paragraphes dans les vignettes, c'est la LOCALISATION qui est au milieu, à équidistance de chaque
+extrémité — ou presque si non justifié. »)
+
+A paragraph that fills its column is therefore centred by construction: the two gaps ARE the
+card's padding, and nothing else is required. Reaching for `text-align: center` on a body
+paragraph to "make the gaps equal" is the trap this rule was misread into once — it centres the
+words, destroys the left reading edge, and answers a measurement artefact rather than the
+instruction. Centre the words only for a SHORT label or caption that fits on one line, where the
+line IS the block. `audit_card_centering` measures accordingly: the BOX of any block of two lines
+or more, the ink only for a single line — with a widened tolerance there, which is the « ou
+presque » of a ragged line.
+
+**4-bis. THE SLIDE TITLE CARRIES THE SLIDE — don't shrink it to make room.** (Léo, 5th review:
+« les titres doivent être plus gros ».) On the 1920 canvas an assertion title sits at **≈78 px**
+and must not fall below ~72 px; it is the first thing read and the only line that states the
+finding. **Hierarchy does not have to be dimensional**: an eyebrow separates itself by case,
+colour and letter-spacing, not by being small, and a subtitle carrying a strong message may sit
+at nearly the title's size. Rank by weight, colour and position before reaching for a size step
+— but never let the title itself get small in the process. When the bigger title costs height,
+pay it on that slide's supporting blocks (banner padding, card padding, row gaps), never by
+letting ink drift into the margin, and re-measure: on the reference deck +14 px of title cost
+one figure 8 px and three paddings.
+
+**5. A TEXT BLOCK MUST USE ITS COLUMN.** A paragraph that folds onto several lines while its
+column is wide has been capped (a `max-width`, a hard `width`) for no reading reason: the eye
+sees a block that stops short and a band of nothing to its right. `audit_measure_underuse`
+flags a block using less than 85 % of a column wider than 1200 px — it ignores bands shared
+with a sibling, where the reduced width IS the grid. This caught a closing paragraph capped at
+1300 px on a 1646 px column, at 34 px where 46 px was available.
+
 **Cross-card alignment (a ROW of equal-size cards):** TOP-ALIGN to a SHARED grid, never
 center each card independently. Icons on one line, labels on one line, titles on one line,
 bodies starting on one line — across ALL cards. Reserve the title block at the MAX title
@@ -234,6 +328,49 @@ colour shift MEANS something. Three hard constraints:
    navy-on-gold ≈ 9.9:1 (great); WHITE-on-gold ≈ 1.9:1 (fails) — gold chips want navy glyphs.
 3. **Watch SHARED icon/logo media** — recolouring one slide's glyph can leak onto another
    slide reusing the same file (see the pptx backend's gotchas; in HTML, a shared CSS class).
+
+## 1c. SURFACE, RELIEF, GROUPING — the three levers that stop a deck reading flat
+
+A deck built only of flat tinted cards on one background reads as a wireframe, not a document.
+(Léo, 4th review, 30/07/2026: « il est trop simpliste ».) Three levers, all measured, none
+optional once a deck is beyond a draft:
+
+**a. A card is a SURFACE, not a tint.** Give it a gradient and a lit edge — the light comes
+from the top, so the top border is the densest. **On a light background the card must be
+LIGHTER than the page, not darker**: a cobalt-tinted gradient on cream turns every card
+grey-lavender and the whole deck looks dirty (measured and rejected, 30/07). Use warm white
+→ a whisper of accent; keep the accent border to draw the edge. On a dark section the rule
+inverts: a light veil on the ink. **This costs contrast** — the gradient's darkest stop is
+what the body text actually sits on, and stacking a card over a grouping panel stacks two
+veils. The gate now reads gradients (worst stop wins) instead of giving up, and it caught
+body text at 3.72:1 under exactly that stack.
+
+**b. Numbering belongs in a round chip in a top corner** (left or right — vary it between
+slides), NOT in a row of the card's grid: it frees a whole line of height. Two constraints:
+(i) the card MUST reserve the space — a chip laid over a kicker is a hard overlap, and even
+when the boxes clear each other a chip 20 px from a long kicker reads as glued to it, so
+shorten the kicker or reserve the padding; (ii) **only number what is actually ordered.** A
+sequence of actions, yes. Four measurements of the same fact, no — a numbered chip claims an
+order that isn't there (rule 1b). Name the class with `num` in it: the centring audit exempts
+numbering by design, which is Léo's own carve-out.
+
+**b-bis. MATCH THE COLOURS, and check the match — every stacked surface at once.** Léo, 5th
+review: « il faut toujours contrôler le matching couleur jusqu'à l'acceptable ». Background,
+panel and card are read TOGETHER, so they must be ONE family in three densities — never three
+different hues. The failure to avoid: a cobalt veil on a warm cream page. Cobalt at 3-5 % over
+cream reads as GREY, so the panel and the bottom of every card turn cold while the page stays
+warm, and the slide looks soiled even though each colour is individually fine. **The panel
+marries the BACKGROUND** (the same hue, one notch denser), **not the cards**; the cards climb
+toward WHITE (warm white → the page's own cream), never toward grey. The only cold thing on a
+warm page is the accent itself, as a hairline border or a chip — there it is deliberate.
+Practically, per section: page = mid tone, panel = page darkened ~4 %, card = near-white.
+Invert all three on an ink section, same rule.
+
+**c. A light PANEL groups what belongs together** — three cover stats, a bar plus its legend,
+five green dimensions. It sits ABOVE the slide background and BELOW the elements, so it must
+be PALER than the cards it holds, and its radius ≥ theirs. Budget its cost: a panel spends
+~52 px of height (padding + rule), and that height is taken from the slide it sits on — pay
+it back on that slide's own cards, never by letting ink drift into the margin.
 
 ## 2. ONE FACT, ONE HOME — no repetition across slides
 

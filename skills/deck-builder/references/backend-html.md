@@ -137,11 +137,16 @@ same numbers: 17 % dead space is a defect in a dense report and a deliberate bre
 
 | benchmark | for | key values |
 |---|---|---|
-| `lecture-dense` | report, review, diagnostic, client deliverable — read alone | body ≥ 30 px, dead ≤ 12 %, occupancy ≥ 55 %, card void ≤ 22 % |
+| `lecture-dense` | report, review, diagnostic, client deliverable — read alone | body ≥ 30 px, dead ≤ 12 %, occupancy ≥ 50 %, card void ≤ 22 % |
 | `orateur` | projected and narrated, one idea per slide | body ≥ 36 px, dead ≤ 30 %, occupancy ≥ 20 % |
 
 `lecture-dense` is calibrated on a real deck (`decks/sante-si-karto.html`, 10 slides) and its
-`observed` block records the distribution it came from. `orateur` is a starting guess and says
+`observed` block records the distribution it came from. **`occupancy_min` has a ceiling nobody
+can beat: the content box is only 70.6 % of the canvas** (margins 137/96), so a slide with no
+large flat surface tops out around 65 %. A threshold above 0.60 would fail correct slides. When
+the deck that calibrated a benchmark is itself repaired, re-derive the distribution and say in
+`observed` which slide now sets the floor and that it was looked at — a threshold kept from a
+deck that no longer exists is the same thing as an opinion. `orateur` is a starting guess and says
 so — **correct it against the first real speaker deck rather than trusting it.** Adding a
 benchmark is copying a file and writing down what it was measured on; a benchmark with no
 `calibrated_on` is an opinion wearing a number.
@@ -161,9 +166,12 @@ written in.
 | `audit_overflow` | **hard** | three ways out: a container clipping its own content (`scrollHeight > clientHeight` — the classic card swallowing its copy), a child escaping its container's padding box, anything leaving the 1920×1080 canvas. |
 | `audit_text_sizes` | **hard** below 24 px, soft under the floor | computed font-size per text element. A **kicker** (uppercase and/or tracked ≥ 4 % em) is detected and judged against the kicker floor (26), not the body floor — without that split, raising the body floor buries the report in noise (59 findings → 4 on the real deck). |
 | contrast | **hard** | WCAG ratio, foreground composited over the real effective background (walks up the ancestors). ≥ 4.5:1, or 3:1 above 56 px. If a gradient or image is in the way it reports `null` — it says "I don't know" rather than inventing a number. |
+| `audit_text_sizes` (contrast) | **hard** below WCAG | a gradient is not an unknown: its colour stops are sampled and the WORST one decides, through every stacked layer (card over panel over slide). Only a background IMAGE is still reported as unmeasurable. Painted-surface detection follows the same rule everywhere — a gradient-filled card is a card. |
 | `audit_card_voids` | **hard** past 30 % | each card is re-rasterised on its OWN ink and measured against its OWN area — the slide-level measure misses it, because at slide scale a half-empty card still reads as a full painted surface. A text block reserves its column, so a ragged right edge or the blank beside a big figure is not counted; a real hole is two-dimensional. |
 | `audit_justification` | soft ≥ ×1.8, **hard** ≥ ×2.5 | per justified paragraph: the measure in **characters per line**, the median and worst inter-word space, and their ratio. Below ~45 characters justification is lost before it starts — the count explains, the ratio decides. |
-| `audit_group_symmetry` | **hard** | sibling cards in a row must share one box size, and one font-size per role. Catches `1fr` (= `minmax(auto,1fr)`) letting a wide-content column grow — use `minmax(0,1fr)`. |
+| `audit_card_centering` | **hard** | inside each card, the left and right gap between the content box and each **block**. An element belongs to the NEAREST painted surface above it, so a grouping panel does not claim the contents of the cards it holds. Cells of a ROW are exempt — two inks sharing a vertical band are parts of one object (a stacked bar, a legend, a table line): the row answers for the centring, not each cell. Three accepted states: fills its column, centred (gaps equal within 12 px), or exempt (numbering — class matching `num`/`stat`/`hero`/`gain`). What is measured is the BOX for any block of two lines or more, and the ink only for a single line (tolerance 26 px if that line is ragged). Measuring the ink of a multi-line block penalised ragged-right text for its own right edge and pushed toward `text-align:center` on body copy — the opposite of the rule. Inline elements inside a sentence are skipped. |
+| `audit_measure_underuse` | **hard** | a text block folding onto several lines while using < 85 % of a column wider than 1200 px — capped for no reading reason. Bands shared with a side-by-side sibling are skipped: there the reduced width IS the grid. |
+| `audit_group_symmetry` | **hard** (box, font-size) · soft (block height) | sibling cards in a row must share one box size, and one font-size per role. Catches `1fr` (= `minmax(auto,1fr)`) letting a wide-content column grow — use `minmax(0,1fr)`. A « group » is siblings with the SAME class signature: a banner and a panel side by side are not one group, and demanding one height of them would forbid composition. It also reports, as a RESERVE, a role whose **block height** differs across the group (3 lines here, 4 there) — not a geometry defect but a calibration one, and the fix is the text or the column width, not a `min-height` that only silences it (a reserve that genuinely equalises the boxes already passes). |
 | in-slide margin | **hard** | no ink in the slide's padding. A card is a grid item, so `min-height:auto` stops it shrinking: it GROWS out of its band, its content stays "inside it", and the container check sees nothing. |
 | `audit_deadspace` | soft (hard with `--strict`) | the slide is rasterised on a 20 px grid, ink cells marked, then the **largest maximal empty rectangle inside the ink bounding box** is found. This is FILL THE SPACE, measured. Reported as a fraction and as `[x, y, w, h]` so it is actionable. |
 | `audit_vbalance` | soft (hard with `--strict`) | the void above the ink vs the void below it, in px (rule 1). |
@@ -184,6 +192,20 @@ objective defect and blocks. `--strict` promotes them when you want a deck to be
 - Re-run the whole deck at the end, not just the slide you touched — a shared class travels.
 - The gate output is a deliverable, not a chore: it is the proof Léo reads (`/verify`
   doctrine). Hand back the final PASS line, not a claim.
+
+### Two recurring causes behind a soft "overlap" verdict
+
+Before moving a block, check these — both make the gate report an overlap where the eye sees none,
+and both are real defects of the box, not of the measurement:
+
+1. **A display number's ink escapes its line box.** At `line-height: 1` on a 200-280 px figure the
+   line box is exactly 1 em while the font's ascent + descent is ~1.2 em, so the glyphs bleed
+   ~35 px above and below. The neighbours' gaps are eaten and the boxes intersect. Give any figure
+   above ~150 px a `line-height` of **1.08 minimum** (`.86` → `1` → `1.08` is the same bug caught
+   three times). It is not a spacing preference: the box must contain its ink.
+2. **A column set to `align-content: center` that is over-full bleeds BOTH ways.** It silently
+   overflows above into the title and below into the margin. An overlap with the `h2` right after
+   the content grew is this, every time — shrink the content, don't add gap.
 
 ### What the gate CANNOT see — always look at the render
 

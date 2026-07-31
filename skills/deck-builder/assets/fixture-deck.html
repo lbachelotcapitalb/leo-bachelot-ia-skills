@@ -169,13 +169,19 @@ h3{font-family:var(--font-display);font-size:43px;line-height:1.2}
 .slide-body{display:grid;height:100%;grid-template-rows:auto 1fr;row-gap:56px}
 .card-row{display:grid;gap:40px;align-items:stretch;grid-template-columns:repeat(3,1fr)}
 .card{position:relative;overflow:hidden;background:var(--surface);border:1px solid var(--border);
-border-radius:16px;padding:48px;display:grid;grid-template-rows:auto auto 1fr auto;row-gap:24px}
+border-radius:16px;padding:48px;display:grid;grid-template-rows:auto auto 1fr auto;row-gap:24px;
+justify-items:center;text-align:center}   /* centrage en vignette : ecarts egaux des deux cotes */
 .card::before{content:"";position:absolute;inset:0 0 auto 0;height:8px;background:var(--accent)}
 /* --- slide 3 only: the defects the gate must catch --- */
 #bad .card{height:300px}
 #bad .tiny{font-size:17px}
 #bad .washed{color:#efe9c0}
 #bad .stamp{position:absolute;left:640px;top:400px;font-size:72px;font-family:var(--font-display);color:var(--accent)}
+/* piege du contraste SOUS UN DEGRADE : lisible sur l'arret cobalt, noye sur
+   l'arret creme. Le gate doit retenir le PIRE des deux — tant qu'il rendait
+   « inconnu » devant un background-image, ce defaut passait inapercu. */
+#bad .card-row{grid-template-columns:repeat(4,minmax(0,1fr))}
+#bad .grad{background:linear-gradient(100deg,#1e2bfa 0%,#fdfae7 100%)}
 </style>
 </head><body>
 <div class="deck-viewport"><main class="deck-stage">
@@ -218,6 +224,9 @@ border-radius:16px;padding:48px;display:grid;grid-template-rows:auto auto 1fr au
         <p class="tiny">Ce texte est sous le plancher typographique.</p><p class="stat">02</p></article>
       <article class="card"><p class="kicker">Contraste</p><h3>Trop clair</h3>
         <p class="washed">Ce texte est presque de la couleur du fond.</p><p class="stat">03</p></article>
+      <article class="card grad"><p class="kicker">Dégradé</p><h3>Fond dégradé</h3>
+        <p class="washed">Ce texte tient sur l'arrêt sombre et se noie sur l'arrêt clair.</p>
+        <p class="stat">04</p></article>
     </div>
   </div>
   <p class="stamp">CHEVAUCHEMENT</p>

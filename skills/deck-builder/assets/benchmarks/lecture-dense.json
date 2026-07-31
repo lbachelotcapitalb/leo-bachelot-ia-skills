@@ -1,13 +1,14 @@
 {
   "name": "lecture-dense",
   "when": "Deck lu seul : rapport, revue, diagnostic, livrable client. Beaucoup de contenu par slide, le lecteur avance à son rythme. Les slides doivent être pleines sans être serrées.",
-  "calibrated_on": "decks/sante-si-karto.html — 10 slides, 30/07/2026, après la revue de Léo",
+  "calibrated_on": "decks/sante-si-karto.html — 10 slides, 30/07/2026, après les quatre revues de Léo (dernière : occupation des slides 6/8/10)",
   "observed": {
-    "occupancy": "43 % (slide de citation) à 69 %, médiane 60 %",
-    "deadspace_paint": "5 % à 11 %",
-    "note": "la couverture tient à 57 % et la clôture à 49 % : un deck de lecture n'a pas de slide sous ~43 %",
+    "occupancy": "53 % à 71 %, médiane 63 % — 10 slides",
+    "deadspace_paint": "5 % à 10 %",
+    "note": "le seuil est descendu de 0.55 a 0.50. Il avait ete pose quand la slide de citation tenait 43 % ; celle-ci a ete rebatie (banniere pleine largeur + 4 vignettes chiffrees) et vaut 69 %. Le plancher observe est desormais la slide 6 a 53 % — grand chiffre a gauche, liste a droite, VERIFIEE au rendu : elle est aeree, pas creuse. Un seuil a 0.55 la declarait fautive sans defaut a corriger.",
     "justification": "vignettes 16-20 car./ligne -> drapeau obligatoire ; bannieres pleine largeur 59-75 car./ligne -> justifie a x1.00",
-    "legende_hero": "une legende sous un grand chiffre en couverture : 40 px (le plancher de corps a 28-30 px y lit trop petit)"
+    "legende_hero": "une legende sous un grand chiffre en couverture : 40 px (le plancher de corps a 28-30 px y lit trop petit)",
+    "occupation_plafond": "le pave de contenu vaut 70,6 % du canvas (marges 137/96) : au-dela de ~70 % d'occupation il faut mordre sur les marges. Un seuil superieur a 0.60 serait donc inatteignable pour une slide sans grand aplat."
   },
   "thresholds": {
     "floor_soft": 30,
@@ -15,12 +16,15 @@
     "deadspace_hard": 0.25,
     "vbalance_soft": 60,
     "vbalance_hard": 140,
-    "occupancy_min": 0.55,
+    "occupancy_min": 0.5,
     "card_void_soft": 0.22,
     "card_void_hard": 0.3,
     "margin_tol": 6,
     "justify_min_cpl": 45,
     "justify_ratio_soft": 1.8,
-    "justify_ratio_hard": 2.5
+    "justify_ratio_hard": 2.5,
+    "center_tol": 12,
+    "underuse_frac": 0.85,
+    "underuse_min_col": 1200
   }
 }

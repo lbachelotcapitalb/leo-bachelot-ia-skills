@@ -31,12 +31,21 @@ for audit, needle in [
 ]:
     if needle not in hard: fails.append(f"slide 3: {audit} did not fire")
 
+# le contraste doit rester MESURE sous un fond en degrade, et sur le pire arret
+grad = [t for t in s[3].get("text", []) if "se noie" in (t.get("text") or "")]
+if not grad:
+    fails.append("slide 3: la sonde de degrade a disparu du fixture")
+elif grad[0].get("contrast") is None:
+    fails.append("slide 3: contraste non mesure sous un degrade (bgOf a renonce)")
+elif grad[0]["contrast"] > 3.0:
+    fails.append(f"slide 3: degrade mesure sur le meilleur arret, pas le pire ({grad[0]['contrast']})")
+
 if s[3]["audit_deadspace"] is None: fails.append("slide 3: deadspace not measured")
 if s[3]["space"]["occupancy"] <= 0: fails.append("slide 3: occupancy not measured")
 
 if fails:
     print("SELFTEST: FAIL"); [print("  -", f) for f in fails]; sys.exit(1)
-print(f"SELFTEST: PASS — 5 audits fire on the trap slide, "
+print(f"SELFTEST: PASS — 5 audits + la sonde de degrade tirent sur la slide piegee, "
       f"{len(s[3]['verdict']['hard'])} hard defects; slides 1-2 clean")
 PY
 rc=$?

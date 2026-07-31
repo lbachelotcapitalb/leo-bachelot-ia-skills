@@ -46,6 +46,7 @@ const T = Object.assign({
   justify_ratio_soft: 1.8,  // pire espace inter-mot / mediane
   justify_ratio_hard: 2.5,  // au-dela : rivieres, abandonner justify
   center_tol: 12,           // px d'ecart tolere entre les deux cotes
+  center_tol_ragged: 26,    // idem pour une ligne unique en drapeau (« ou presque si non justifie »)
   center_fullwidth_frac: 0.92, // au-dela, le bloc occupe sa colonne : rien a centrer
   underuse_min_col: 1200,   // on ne juge la largeur perdue que dans une colonne large
   underuse_frac: 0.85,      // sous ce taux d'occupation de la colonne : bride sans raison
@@ -92,19 +93,59 @@ const ratio = (a, b) => { const l1 = lum(a), l2 = lum(b); const [hi, lo] = l1 > 
 
 /* effective background under an element: walk up, composite, and give
    up honestly if a gradient/image is in the way rather than guessing */
+/* Un degrade n'est pas une inconnue : ses arrets SONT des couleurs. Rendre
+   « je ne sais pas » des qu'une vignette a un fond degrade rendait le gate
+   aveugle au contraste sur toute la slide — exactement au moment ou on
+   ajoute des degrades pour l'esthetique. On empile donc les arrets d'un
+   linear/radial-gradient comme autant de fonds possibles, et le contraste
+   est rendu sur le PIRE d'entre eux. Une image de fond, elle, reste une
+   vraie inconnue. */
+const stopsOf = (bgi) => {
+  if (!bgi || bgi === 'none') return null;
+  if (!/^(linear|radial|repeating-linear|repeating-radial)-gradient/.test(bgi)) return 'unknown';
+  const out = [];
+  for (const m of bgi.matchAll(/rgba?\([^)]+\)/g)) { const c = parse(m[0]); if (c) out.push(c); }
+  return out.length ? out : 'unknown';
+};
+
 const bgOf = (el) => {
-  const stack = [];
+  const layers = [];              // du plus proche au plus lointain
   let n = el;
   while (n && n !== document.documentElement) {
     const cs = getComputedStyle(n);
-    if (cs.backgroundImage && cs.backgroundImage !== 'none') return { unknown: true };
+    const st = stopsOf(cs.backgroundImage);
+    if (st === 'unknown') return { unknown: true };
+    if (st) layers.push(st);
     const c = parse(cs.backgroundColor);
-    if (c && c.a > 0) { stack.push(c); if (c.a >= 1) break; }
+    if (c && c.a > 0) { layers.push([c]); if (c.a >= 1) break; }
     n = n.parentElement;
   }
-  let base = { r: 255, g: 255, b: 255, a: 1 };
-  for (let k = stack.length - 1; k >= 0; k--) base = over(stack[k], base);
-  return base;
+  /* composition : on garde toutes les combinaisons d'arrets, bornees pour ne
+     pas exploser (un degrade a 3 arrets sur 3 niveaux = 27 fonds au pire). */
+  let bases = [{ r: 255, g: 255, b: 255, a: 1 }];
+  for (let k = layers.length - 1; k >= 0; k--) {
+    const next = [];
+    for (const b of bases) for (const c of layers[k]) next.push(over(c, b));
+    bases = next.length > 24 ? next.slice(0, 24) : next;
+  }
+  return bases.length > 1 ? { multi: bases } : bases[0];
+};
+
+/* pire contraste sur l'ensemble des fonds possibles */
+const worstRatio = (fg, bg) => bg.multi
+  ? bg.multi.reduce((w, b) => Math.min(w, ratio(fg, b)), Infinity)
+  : ratio(fg, bg);
+
+/* « Cet element est-il une SURFACE peinte ? » — c'est-a-dire une vignette, un
+   encadre, un panneau : quelque chose que l'oeil lit comme un contenant.
+   Un fond en degrade en est un autant qu'un aplat ; ne tester que
+   backgroundColor rendait invisibles aux audits (vides, centrage, tailles)
+   toutes les vignettes du jour ou on leur donne un degrade. */
+const isPainted = (cs) => {
+  const c = parse(cs.backgroundColor);
+  return (c && c.a > 0.02) ||
+         (cs.backgroundImage && cs.backgroundImage !== 'none') ||
+         parseFloat(cs.borderTopWidth) > 0;
 };
 
 /* --- element census -------------------------------------------------- */
@@ -155,10 +196,7 @@ for (const el of slide.querySelectorAll('*')) {
 
   const isText = hasOwnText(el);
   const isMedia = MEDIA.has(el.tagName);
-  const bgc = parse(cs.backgroundColor);
-  const painted = (bgc && bgc.a > 0.02) ||
-                  (cs.backgroundImage && cs.backgroundImage !== 'none') ||
-                  (parseFloat(cs.borderTopWidth) + parseFloat(cs.borderLeftWidth) > 0);
+  const painted = isPainted(cs) || parseFloat(cs.borderLeftWidth) > 0;
 
   const box = { x: r.x, y: r.y, w: r.width, h: r.height, right: r.right, bottom: r.bottom };
 
@@ -220,9 +258,8 @@ for (let i = 0; i < items.length; i++) {
 const isContainer = (el) => {
   if (el === slide) return true;
   const cs = getComputedStyle(el);
-  const bgc = parse(cs.backgroundColor);
-  return (bgc && bgc.a > 0.02) || cs.overflow !== 'visible' ||
-         parseFloat(cs.borderTopWidth) > 0 || parseFloat(cs.borderBottomWidth) > 0;
+  return isPainted(cs) || cs.overflow !== 'visible' ||
+         parseFloat(cs.borderBottomWidth) > 0;
 };
 const overflow = clipped.map(c => ({ kind: 'clipped', sel: c.sel, by_px: c.by_px, text: c.text }));
 const scs = getComputedStyle(slide);
@@ -335,9 +372,7 @@ const cardVoids = [];
 for (const el of slide.querySelectorAll('*')) {
   const cs = getComputedStyle(el);
   if (cs.display === 'none' || cs.visibility === 'hidden') continue;
-  const bgc = parse(cs.backgroundColor);
-  const isCard = (bgc && bgc.a > 0.02) || parseFloat(cs.borderTopWidth) > 0;
-  if (!isCard) continue;
+  if (!isPainted(cs)) continue;
   const r = el.getBoundingClientRect();
   if (r.width * r.height < T.card_min_px2) continue;      // pills, chips, rules: not cards
   const inside = items.filter(i => el.contains(i.el) && i.el !== el);
@@ -406,31 +441,61 @@ for (const it of items) {
    rangee de vignettes soeurs : meme boite, et un meme role (meme
    classe) porte la MEME taille de police partout. Une taille qui varie
    d'une vignette a l'autre casse la symetrie du groupe. */
+const linesOf = new Map(items.map(i => [i.el, (i.lines || []).length]));
+
 const symmetry = [];
 for (const row of slide.querySelectorAll('*')) {
-  const kids = [...row.children].filter(k => {
+  const painted = [...row.children].filter(k => {
     const cs = getComputedStyle(k);
     if (cs.display === 'none' || cs.visibility === 'hidden') return false;
-    const c = parse(cs.backgroundColor);
-    return (c && c.a > 0.02) || parseFloat(cs.borderTopWidth) > 0;
+    return isPainted(cs);
   });
-  if (kids.length < 2) continue;
-  const boxes = kids.map(k => k.getBoundingClientRect());
-  if (boxes.some(b => b.width * b.height < T.card_min_px2)) continue;
-  const dims = [...new Set(boxes.map(b => Math.round(b.width) + 'x' + Math.round(b.height)))];
-  if (dims.length > 1) symmetry.push({ group: path(row), role: 'taille de la vignette', values: dims });
-  const byRole = {};
-  for (const k of kids) {
-    for (const el of k.querySelectorAll('*')) {
-      if (!hasOwnText(el)) continue;
-      const role = (el.className && String(el.className).trim()) || el.tagName.toLowerCase();
-      const fs = Math.round(parseFloat(getComputedStyle(el).fontSize));
-      (byRole[role] = byRole[role] || []).push(fs);
-    }
+  /* Un GROUPE, ce sont des soeurs qui jouent le MEME role — reperees par la
+     meme signature de classe. Une banniere et un encadre poses cote a cote
+     sont deux objets differents : exiger la meme hauteur des deux, c'est
+     interdire toute composition. On ne compare donc qu'a signature egale. */
+  const bySig = {};
+  for (const k of painted) {
+    const sig = String(k.className || '').trim().split(/\s+/).sort().join(' ') || k.tagName.toLowerCase();
+    (bySig[sig] = bySig[sig] || []).push(k);
   }
-  for (const [role, sizes] of Object.entries(byRole)) {
-    const uniq = [...new Set(sizes)];
-    if (uniq.length > 1) symmetry.push({ group: path(row), role, values: uniq.map(String) });
+  for (const kids of Object.values(bySig)) {
+    if (kids.length < 2) continue;
+    const boxes = kids.map(k => k.getBoundingClientRect());
+    if (boxes.some(b => b.width * b.height < T.card_min_px2)) continue;
+    const dims = [...new Set(boxes.map(b => Math.round(b.width) + 'x' + Math.round(b.height)))];
+    if (dims.length > 1) symmetry.push({ group: path(row), role: 'taille de la vignette', values: dims });
+    const byRole = {}, byLines = {};
+    for (const k of kids) {
+      for (const el of k.querySelectorAll('*')) {
+        if (!hasOwnText(el)) continue;
+        if (getComputedStyle(el).display === 'inline') continue;   // un mot en gras dans une phrase n'est pas un bloc du groupe
+        const role = (el.className && String(el.className).trim()) || el.tagName.toLowerCase();
+        const fs = Math.round(parseFloat(getComputedStyle(el).fontSize));
+        (byRole[role] = byRole[role] || []).push(fs);
+        /* on compare la HAUTEUR du bloc, pas son nombre de lignes : une
+           reserve (min-height) qui egalise deja le groupe est une reponse
+           valide au probleme, et l'audit n'a pas a la contredire. */
+        if (linesOf.get(el)) (byLines[role] = byLines[role] || []).push(Math.round(el.getBoundingClientRect().height / 4) * 4);
+      }
+    }
+    for (const [role, sizes] of Object.entries(byRole)) {
+      const uniq = [...new Set(sizes)];
+      if (uniq.length > 1) symmetry.push({ group: path(row), role, values: uniq.map(String) });
+    }
+    /* « Une vignette se calibre sur SON texte, meme taille dans un groupe. »
+       Deux vignettes soeurs dont le meme bloc tient sur 3 et 4 lignes ne se
+       valent plus : l'une a un grand vide la ou l'autre est pleine — sauf si
+       une reserve egalise deja les boites. Ce n'est
+       pas un defaut de geometrie (rien ne deborde, rien ne se chevauche) —
+       c'est un defaut de calibrage, donc une reserve, pas un blocage. */
+    for (const [role, counts] of Object.entries(byLines)) {
+      const uniq = [...new Set(counts)];
+      if (uniq.length > 1 && counts.length === kids.length) {
+        symmetry.push({ group: path(row), role, soft: true,
+          kind: 'hauteur du bloc', values: uniq.sort((a, b) => a - b).map(v => v + 'px') });
+      }
+    }
   }
 }
 
@@ -443,31 +508,81 @@ for (const row of slide.querySelectorAll('*')) {
    Trois etats acceptes : pleine largeur (le bloc occupe sa colonne),
    centre (les deux ecarts se valent), ou exempte (numerotation, repere
    par une classe contenant « num » ou « n »). Tout le reste est un
-   element pose d'un cote, et c'est un defaut. */
+   element pose d'un cote, et c'est un defaut.
+
+   CE QUI EST MESURE : le BLOC, pas ses lignes. (Leo, 4e revue, 30/07 :
+   « garder justifie + gauche les paragraphes dans les vignettes, c'est la
+   LOCALISATION qui est au milieu, a equidistance de chaque extremite — ou
+   presque si non justifie. ») Un texte en drapeau a un bord droit
+   irregulier PAR CONSTRUCTION : mesurer son encre condamnait le drapeau au
+   nom du centrage et poussait a un text-align:center mot a mot, qui n'est
+   pas ce qui est demande. Des qu'un bloc tient sur plusieurs lignes on
+   mesure donc sa BOITE ; l'encre ne sert plus que pour une ligne unique,
+   ou elle EST le bloc visible, avec une tolerance elargie si elle est en
+   drapeau.
+   ATTENTION : MEASURE est injecte dans un String.raw. Aucun backtick, et
+   aucune interpolation, meme dans les commentaires : ils cassent le
+   template et le gate meurt en SyntaxError sans dire ou. */
+/* Une vignette ne « contient » un element que si elle est la surface peinte
+   LA PLUS PROCHE au-dessus de lui. Sans cela un encadre de regroupement
+   reclame aussi les elements de chaque vignette qu'il englobe et les mesure
+   par rapport a SA boite : un libelle parfaitement centre dans sa propre
+   vignette est alors declare « pose d'un cote ». On rattache donc chaque
+   element d'encre a un seul proprietaire. */
+const ownerOf = new Map();
+for (const it of items) {
+  let owner = null;
+  for (let n = it.el.parentElement; n && n !== slide.parentElement; n = n.parentElement) {
+    const ncs = getComputedStyle(n);
+    if (ncs.display === 'none' || ncs.visibility === 'hidden') continue;
+    if (!isPainted(ncs)) continue;
+    const nr = n.getBoundingClientRect();
+    if (nr.width * nr.height < T.card_min_px2) continue;
+    owner = n; break;
+  }
+  ownerOf.set(it, owner);
+}
+
 const centering = [];
 for (const el of slide.querySelectorAll('*')) {
   const cs = getComputedStyle(el);
   if (cs.display === 'none' || cs.visibility === 'hidden') continue;
-  const bgc = parse(cs.backgroundColor);
-  if (!((bgc && bgc.a > 0.02) || parseFloat(cs.borderTopWidth) > 0)) continue;
+  if (!isPainted(cs)) continue;
   const r = el.getBoundingClientRect();
   if (r.width * r.height < T.card_min_px2) continue;
-  const inside = items.filter(i => el.contains(i.el) && i.el !== el);
+  const inside = items.filter(i => ownerOf.get(i) === el);
   if (inside.length < 2) continue;
+  /* La consigne porte sur des blocs EMPILES : un titre, un chiffre, un
+     paragraphe poses l'un sous l'autre. Les cases d'une RANGEE (segments
+     d'une barre empilee, entrees d'une legende, colonnes d'une ligne) sont
+     les parties d'un seul objet : elles se repartissent sur la largeur par
+     construction, et exiger que chacune soit centree reviendrait a interdire
+     la rangee. On repere une rangee par la mesure — deux encres qui
+     partagent la meme bande verticale — et c'est la rangee entiere, pas ses
+     cases, qui repond du centrage. */
+  const uns = inside.map(i => union(i.lines));
   const cl = r.x + parseFloat(cs.borderLeftWidth) + parseFloat(cs.paddingLeft);
   const cr = r.right - parseFloat(cs.borderRightWidth) - parseFloat(cs.paddingRight);
   const cwid = cr - cl;
   if (cwid <= 0) continue;
-  for (const it of inside) {
-    if (getComputedStyle(it.el).display === 'inline') continue;      // inline dans une phrase
+  for (let k = 0; k < inside.length; k++) {
+    const it = inside[k];
+    const uk = uns[k];
+    if (uk && uns.some((o, j) => j !== k && o &&
+        Math.min(uk.bottom, o.bottom) - Math.max(uk.y, o.y) > (uk.bottom - uk.y) * 0.5)) continue;
+    const ics = getComputedStyle(it.el);
+    if (ics.display === 'inline') continue;                          // inline dans une phrase
     const cls = String(it.el.className || '').toLowerCase();
     if (/num|chiffre|stat|hero|gain/.test(cls)) continue;             // numerotation : exemptee
     const u = union(it.lines);
     if (!u) continue;
-    const gl = u.x - cl, gr = cr - u.right;
-    if ((u.right - u.x) >= cwid * T.center_fullwidth_frac) continue; // occupe sa colonne
-    if (Math.abs(gl - gr) <= T.center_tol) continue;                 // centre
-    centering.push({ card: path(el), sel: it.sel,
+    const multi = it.lines.length > 1;
+    const b = multi ? (it.elBox || u) : u;    // multi-lignes : la BOITE ; ligne unique : l'encre
+    const gl = b.x - cl, gr = cr - b.right;
+    if ((b.right - b.x) >= cwid * T.center_fullwidth_frac) continue; // occupe sa colonne
+    const ragged = !multi && ics.textAlign !== 'center' && ics.textAlign !== 'justify';
+    if (Math.abs(gl - gr) <= (ragged ? T.center_tol_ragged : T.center_tol)) continue;
+    centering.push({ card: path(el), sel: it.sel, measured: multi ? 'box' : 'ink',
       left_px: Math.round(gl), right_px: Math.round(gr),
       delta_px: Math.round(Math.abs(gl - gr)), text: it.text });
   }
@@ -542,10 +657,13 @@ return {
     const ls = parseFloat(ics.letterSpacing);
     const kicker = ics.textTransform === 'uppercase' || (ls > 0 && ls >= i.fs * 0.04);
     const bg = bgOf(i.el);
-    const fg = i.color ? (i.color.a < 1 && !bg.unknown ? over(i.color, bg) : i.color) : null;
+    const solid = bg.unknown ? null : (bg.multi ? bg.multi[0] : bg);
+    const fg = i.color ? (i.color.a < 1 && solid ? over(i.color, solid) : i.color) : null;
     return {
       sel: i.sel, fs: +i.fs.toFixed(1), text: i.text, kicker,
-      contrast: (bg.unknown || !fg) ? null : +ratio(fg, bg).toFixed(2),
+      lines: (i.lines || []).length,
+      contrast: (bg.unknown || !fg) ? null : +worstRatio(fg, bg).toFixed(2),
+      bg_stops: bg.multi ? bg.multi.length : 1,
     };
   }),
 };
@@ -614,7 +732,7 @@ for (const i of want) {
     H.push(`largeur perdue : ${u.sel} n'occupe que ${u.used_pct}% de sa colonne (${u.width_px}px sur ${u.avail_px}px) et se plie sur ${u.lines} lignes — "${u.text}"`)
   }
   for (const y of (r.audit_group_symmetry || [])) {
-    H.push(`symétrie de groupe : « ${y.role} » varie dans ${y.group} → ${y.values.join(' / ')}`)
+    (y.soft ? S : H).push(`symétrie de groupe : ${y.kind || 'taille'} de « ${y.role} » varie dans ${y.group} → ${y.values.join(' / ')}`)
   }
   if (T.occupancy_min && r.space.occupancy < T.occupancy_min) {
     S.push(`occupation ${Math.round(r.space.occupancy * 100)}% < ${Math.round(T.occupancy_min * 100)}% attendu par le benchmark`)

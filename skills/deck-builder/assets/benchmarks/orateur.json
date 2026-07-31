@@ -14,6 +14,9 @@
     "margin_tol": 6,
     "justify_min_cpl": 45,
     "justify_ratio_soft": 1.8,
-    "justify_ratio_hard": 2.5
+    "justify_ratio_hard": 2.5,
+    "center_tol": 16,
+    "underuse_frac": 0.8,
+    "underuse_min_col": 1200
   }
 }
