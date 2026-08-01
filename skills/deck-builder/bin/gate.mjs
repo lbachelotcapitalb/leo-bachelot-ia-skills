@@ -41,6 +41,11 @@ const T = Object.assign({
   card_void_soft: 0.22,   // plus grand vide dans une vignette / aire de la vignette
   card_void_hard: 0.30,   // au-delà : défaut dur (« jamais de gros vide dans une vignette »)
   margin_tol: 6,          // px d'encre toleres dans la marge de la slide
+  // La FURNITURE DE PAGE vit dans la marge, c'est sa definition : folio,
+  // bandeau de tete, filets de cadre. La compter comme un debordement revient
+  // a interdire de paginer. Elle reste soumise a tout le reste (plancher
+  // typographique, contraste, chevauchement) — seule la marge lui est ouverte.
+  chrome_sel: '.folio, .topbar, .rule-t, .rule-b, .doodle, .doodle-note, [data-chrome]',
   card_void_min_frac: 0.35, // un vide doit faire >=35% de la LARGEUR et de la HAUTEUR
   justify_min_cpl: 45,      // caracteres par ligne sous lesquels justifier est perdu d'avance
   justify_ratio_soft: 1.8,  // pire espace inter-mot / mediane
@@ -51,6 +56,34 @@ const T = Object.assign({
   underuse_min_col: 1200,   // on ne juge la largeur perdue que dans une colonne large
   underuse_frac: 0.85,      // sous ce taux d'occupation de la colonne : bride sans raison
   card_min_px2: 90000,    // en dessous, c'est une pastille, pas une vignette
+  // Air exigee entre une vignette et le texte pose au-dessus d'elle. Deux
+  // entrees, on prend la plus exigeante :
+  //   — une FRACTION du corps du texte au-dessus (un chapeau a 62px appelle
+  //     plus d'air qu'une source a 26px), mais SOUS-LINEAIRE : l'espace qui
+  //     suit un titre suit sa taille de loin, pas au meme rythme. A 1,25x un
+  //     titre de 62px reclamait 78px sur une scene de 1080 — c'etait interdire
+  //     la densite au nom de l'air ;
+  //   — un PLANCHER en corps de la slide : sous une ligne de texte courant,
+  //     aucun blanc ne se lit comme une separation, quelle que soit la taille
+  //     de ce qui precede.
+  breath_soft: 0.60,      // fraction du corps du texte au-dessus
+  breath_floor: 1.0,      // … et jamais moins d'un corps de slide
+  // Le palier DUR est bas a dessein : une slide dense arbitre en permanence
+  // entre l'air et le contenu, et la reserve suffit a le signaler. Sous 0,35
+  // corps il n'y a plus d'arbitrage — la vignette touche le texte.
+  breath_hard: 0.35,
+  /* ---- SÉPARATEURS (trait pose ENTRE deux blocs) ----------------------
+     « Le slash apparait trop proche du schema de droite, ca rend mal ; le
+     skill doit pouvoir controler ceci. » (Leo, 01/08)
+     Un separateur ne se juge pas a sa longueur mais a ses DEUX ECARTS :
+     l'ecart minimal de chaque cote, et leur EGALITE. */
+  sep_thick: 56,        // cote fin de la boite englobante, au-dela ce n'est plus un trait
+  sep_ratio: 3,         // allongement minimal (long / fin)
+  sep_min_len: 80,      // sous cette longueur c'est une puce, pas un separateur
+  sep_band_frac: 0.4,   // recouvrement exige pour qu'un voisin soit « en face »
+  sep_min_gap: 20,      // px : sous cet ecart, le trait n'est plus entre, il touche
+  sep_skew_px: 10,      // px : desequilibre tolere entre les deux ecarts
+  sep_skew_frac: 0.25,  // … ou 25% du plus petit des deux, le plus permissif des deux
 }, A.thresholds || {})
 
 if (!DECK) { cliLog('GATE: FAIL — no deck path in GATE_ARGS'); }
@@ -276,7 +309,8 @@ for (const it of items) {
     continue;
   }
   const marg = Math.max(b.bottom - safe.b, safe.t - b.y, b.right - safe.r, safe.l - b.x);
-  if (marg > T.margin_tol) {
+  const isChrome = T.chrome_sel && (it.el.closest(T.chrome_sel) !== null);
+  if (marg > T.margin_tol && !isChrome) {
     overflow.push({ sel: it.sel, kind: 'in-slide-margin', by_px: +marg.toFixed(1), text: it.text });
   }
 
@@ -543,6 +577,182 @@ for (const it of items) {
   ownerOf.set(it, owner);
 }
 
+/* ---------- audit_breathing ------------------------------------------
+   « Les 2 vignettes sont trop proches du texte du dessus, le controle
+   maths doit permettre d'ecarter un peu plus. » (Leo, 01/08)
+
+   Une vignette posee sous un chapeau de texte a besoin d'un BLANC qui dise
+   ou finit la phrase et ou commence l'objet. Trop serre, la premiere
+   vignette se lit comme la suite du paragraphe. L'ecart ne se juge pas en
+   valeur absolue : il se juge en corps du texte qui precede — un chapeau a
+   36px demande plus d'air qu'une source a 26px.
+
+   ON NE MESURE QUE le blanc entre une vignette et un texte pose DIRECTEMENT
+   SUR LA SLIDE (proprietaire nul). Le blanc entre deux rangees de vignettes,
+   ou entre la derniere ligne d'une vignette et la vignette d'en dessous, est
+   une autre relation, deja tenue par les gouttieres de la grille.
+
+   Il faut aussi que les deux se REGARDENT : on exige un recouvrement
+   horizontal d'au moins 40% de la plus etroite des deux boites. Sans cela un
+   titre de colonne de gauche commanderait l'ecart d'une vignette de droite
+   qu'il ne surplombe pas. */
+const breathing = [];
+{
+  const cardish = [...slide.querySelectorAll('*')].filter(el => {
+    const cs = getComputedStyle(el);
+    if (cs.display === 'none' || cs.visibility === 'hidden') return false;
+    if (!isPainted(cs)) return false;
+    const r = el.getBoundingClientRect();
+    return r.width * r.height >= T.card_min_px2;
+  });
+  /* « Pose directement sur la slide » = proprietaire nul OU la slide elle-meme.
+     Oublier le second cas vide le controle sans bruit : la slide est peinte et
+     couvre 1920x1080, donc ownerOf la designe proprietaire de TOUT texte libre,
+     et la liste sort vide. Un controle qui ne trouve jamais rien ressemble a un
+     controle qui passe. */
+  const loose = items.filter(i => i.kind === 'text' && i.fs > 0 &&
+    (!ownerOf.get(i) || ownerOf.get(i) === slide));
+  for (const el of cardish) {
+    if (el.closest(T.chrome_sel)) continue;
+    const r = el.getBoundingClientRect();
+    let best = null;
+    for (const it of loose) {
+      if (el.contains(it.el) || it.el.contains(el)) continue;
+      /* Un CARTOUCHE pose juste au-dessus de son propre objet — meme parent,
+         donc meme unite de composition — n'est pas « le texte du dessus » : il
+         appartient a l'objet et doit lui rester colle. Exiger de l'air entre
+         les deux, c'est demander de detacher une legende de sa figure. */
+      if (it.el.parentElement && it.el.parentElement.parentElement === el.parentElement) continue;
+      if (it.el.parentElement === el.parentElement) continue;
+      const b = it.el.getBoundingClientRect();
+      if (b.bottom > r.y + 1) continue;                       // pas au-dessus
+      const ov = Math.min(b.right, r.right) - Math.max(b.x, r.x);
+      if (ov < Math.min(b.width, r.width) * 0.4) continue;    // ne se regardent pas
+      if (!best || b.bottom > best.bottom) best = { bottom: b.bottom, it: it };
+    }
+    if (!best) continue;
+    const gap = r.y - best.bottom;
+    const bodyFs = parseFloat(getComputedStyle(slide).fontSize) || 30;
+    const need = Math.max(best.it.fs * T.breath_soft, bodyFs * T.breath_floor);
+    if (gap >= need) continue;
+    breathing.push({
+      sel: path(el), above: best.it.sel, text: best.it.text,
+      gap_px: Math.round(gap), fs_above: +best.it.fs.toFixed(1),
+      need_px: Math.round(need), hard: gap < best.it.fs * T.breath_hard,
+    });
+  }
+}
+
+/* ---------- audit_separator ------------------------------------------
+   « Le slash apparait trop proche du schema "Les Affaires", ca rend mal ;
+   le skill doit pouvoir controler ceci et rechercher une meilleure
+   harmonie. » (Leo, 01/08)
+
+   Un TRAIT DE SEPARATION dit « ceci d'un cote, cela de l'autre ». Il ne se
+   juge donc ni a sa longueur ni a sa position, mais a ses DEUX ECARTS :
+   s'il frole l'un des deux blocs, il cesse de separer et se met a lui
+   appartenir. Deux mesures, et une seule idee — l'ecart minimal de chaque
+   cote, et l'EGALITE des deux.
+
+   POURQUOI CE CONTROLE N'EXISTAIT PAS. Le trait etait dessine en ::before.
+   Le recensement d'encre parcourt querySelectorAll('*') : AUCUN
+   pseudo-element n'y entre jamais. Le defaut n'avait pas echappe au gate,
+   il lui etait INVISIBLE — ni chevauchement, ni marge, ni ecart ne
+   pouvaient le prendre. Regle qui en sort, et qui vaut au-dela des
+   separateurs : ce qui PORTE la composition est un element du document ;
+   le ::before est reserve a l'ornement qu'on accepte de ne jamais mesurer.
+
+   Un separateur se reconnait a quatre traits mesurables, tous requis :
+   allonge, fin, POSE SUR LA SLIDE (un filet a l'interieur d'une vignette
+   est un ornement de la vignette — il ne separe pas deux blocs), et de
+   l'encre DES DEUX COTES dans sa propre bande. Sans le dernier ce n'est
+   pas un separateur, c'est un tiret, et on ne lui demande rien.
+
+   Le voisin « en face » se mesure au recouvrement rapporte au PLUS PETIT
+   des deux : une case de 42px face a un trait de 400px ne recouvre que 10%
+   du trait, mais 100% d'elle-meme. Rapporter au trait reviendrait a rendre
+   un trait long insensible a tout ce qu'il longe — c'est-a-dire aveugle
+   exactement dans le cas ou il gene. */
+const separators = [];
+for (const el of slide.querySelectorAll('*')) {
+  const cs = getComputedStyle(el);
+  if (cs.display === 'none' || cs.visibility === 'hidden' || parseFloat(cs.opacity) === 0) continue;
+  if (!isPainted(cs)) continue;
+  if (T.chrome_sel && el.closest(T.chrome_sel)) continue;
+  if (hasOwnText(el) || MEDIA.has(el.tagName)) continue;
+  const r = el.getBoundingClientRect();
+  /* LA FORME SE JUGE SUR LA BOITE NON TRANSFORMEE, L'ECART SUR LA BOITE
+     REELLE. Le premier jet testait la finesse sur getBoundingClientRect :
+     or la boite englobante d'un trait INCLINE s'elargit avec sa longueur —
+     le meme trait de 5px passait de 38px de large a 84px en s'allongeant.
+     Resultat mesure : le controle rejetait comme « pas assez fin » exactement
+     le trait trop long qu'il etait ecrit pour prendre. Un seuil qui se relache
+     avec le defaut ne controle rien. offsetWidth/offsetHeight ignorent la
+     transformation (la scene est mesuree a l'echelle 1, cf. setDeviceMetrics),
+     et donnent la forme AUTEUR — celle qu'on a voulue. */
+  const ow = el.offsetWidth || r.width, oh = el.offsetHeight || r.height;
+  const thin = Math.min(ow, oh), long = Math.max(ow, oh);
+  if (thin < 1 || thin > T.sep_thick || long < T.sep_min_len) continue;
+  if (long / thin < T.sep_ratio) continue;
+  /* Pose sur la slide : aucun ancetre peint de taille de vignette. */
+  let owned = false;
+  for (let n = el.parentElement; n && n !== slide; n = n.parentElement) {
+    if (!isPainted(getComputedStyle(n))) continue;
+    const nr = n.getBoundingClientRect();
+    if (nr.width * nr.height >= T.card_min_px2) { owned = true; break; }
+  }
+  if (owned) continue;
+  /* SEUL DANS SON EMPLACEMENT. Premier jet du controle (01/08) : il a leve
+     deux faux positifs — le filet de fuite d'un cartouche, et une barre de
+     graphique. Tous deux sont fins, allonges, poses sur la slide, et ont bien
+     de l'encre des deux cotes : la geometrie seule ne les distingue pas d'un
+     separateur. Ce qui les distingue est STRUCTUREL — ils PARTAGENT leur
+     emplacement avec ce qu'ils accompagnent (le filet suit un libelle, la
+     barre porte sa valeur au-dessus). Un separateur, lui, se met dans une
+     case a lui : c'est meme la seule raison de lui en donner une. On exige
+     donc qu'il soit le seul enfant peint ou textuel de son parent. Un
+     controle etroit et juste vaut mieux qu'un controle large qui crie. */
+  const kin = el.parentElement ? [...el.parentElement.children] : [];
+  if (kin.some(n => n !== el && (isPainted(getComputedStyle(n)) || hasOwnText(n)))) continue;
+
+  const vertical = oh >= ow;   // l'axe aussi se lit sur la forme auteur
+  const bandA = vertical ? r.y : r.x;
+  const bandB = vertical ? r.bottom : r.right;
+  const bandLen = bandB - bandA;
+  let before = null, after = null;
+  for (const p of paint) {
+    if (p.x <= r.x && p.y <= r.y && p.right >= r.right && p.bottom >= r.bottom) continue; // contenant
+    const pA = vertical ? p.y : p.x, pB = vertical ? p.bottom : p.right;
+    const ov = Math.min(pB, bandB) - Math.max(pA, bandA);
+    if (ov < Math.min(pB - pA, bandLen) * T.sep_band_frac) continue;
+    if (vertical) {
+      if (p.right <= r.x) before = before === null ? p.right : Math.max(before, p.right);
+      else if (p.x >= r.right) after = after === null ? p.x : Math.min(after, p.x);
+    } else {
+      if (p.bottom <= r.y) before = before === null ? p.bottom : Math.max(before, p.bottom);
+      else if (p.y >= r.bottom) after = after === null ? p.y : Math.min(after, p.y);
+    }
+  }
+  if (before === null || after === null) continue;
+
+  const gapA = (vertical ? r.x : r.y) - before;
+  const gapB = after - (vertical ? r.right : r.bottom);
+  const tight = Math.min(gapA, gapB);
+  const skew = Math.abs(gapA - gapB);
+  const allow = Math.max(T.sep_skew_px, tight * T.sep_skew_frac);
+  if (tight >= T.sep_min_gap && skew <= allow) continue;
+  separators.push({
+    sel: path(el), axis: vertical ? 'vertical' : 'horizontal',
+    gap_a_px: Math.round(gapA), gap_b_px: Math.round(gapB),
+    min_gap_px: Math.round(tight), min_need_px: T.sep_min_gap,
+    skew_px: Math.round(skew), skew_allow_px: Math.round(allow),
+    /* Dur quand le trait touche pour de bon (moitie de l'ecart minimal) ou
+       quand le desequilibre depasse deux fois ce qu'on tolere : en dessous,
+       c'est une reserve de composition, pas une faute. */
+    hard: tight < T.sep_min_gap * 0.5 || skew > allow * 2,
+  });
+}
+
 const centering = [];
 for (const el of slide.querySelectorAll('*')) {
   const cs = getComputedStyle(el);
@@ -642,6 +852,8 @@ return {
   audit_justification: justify,
   audit_group_symmetry: symmetry,
   audit_card_centering: centering,
+  audit_breathing: breathing,
+  audit_separator: separators,
   audit_measure_underuse: underuse,
   audit_vbalance: m ? { top_px: m.top, bottom_px: m.bottom, delta_px: Math.abs(m.top - m.bottom) } : null,
   space: {
@@ -727,6 +939,15 @@ for (const i of want) {
   }
   for (const c of (r.audit_card_centering || [])) {
     H.push(`centrage vignette : ${c.sel} pose d'un cote — ${c.left_px}px a gauche vs ${c.right_px}px a droite (ecart ${c.delta_px}px) dans ${c.card} — "${c.text}"`)
+  }
+  for (const b of (r.audit_breathing || [])) {
+    ;(b.hard ? H : S).push(`air au-dessus : ${b.sel} n'a que ${b.gap_px}px sous « ${b.above} » à ${b.fs_above}px — il en faut ${b.need_px}`)
+  }
+  for (const p of (r.audit_separator || [])) {
+    const why = []
+    if (p.min_gap_px < p.min_need_px) why.push(`frole a ${p.min_gap_px}px (minimum ${p.min_need_px})`)
+    if (p.skew_px > p.skew_allow_px) why.push(`desequilibre de ${p.skew_px}px (tolere ${p.skew_allow_px})`)
+    ;(p.hard ? H : S).push(`separateur ${p.axis} : ${p.gap_a_px}px d'un cote vs ${p.gap_b_px}px de l'autre — ${why.join(' · ')} — ${p.sel}`)
   }
   for (const u of (r.audit_measure_underuse || [])) {
     H.push(`largeur perdue : ${u.sel} n'occupe que ${u.used_pct}% de sa colonne (${u.width_px}px sur ${u.avail_px}px) et se plie sur ${u.lines} lignes — "${u.text}"`)

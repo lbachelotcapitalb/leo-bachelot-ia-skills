@@ -102,16 +102,27 @@ body[data-motion="on"] .slide.active .reveal:nth-child(4) { transition-delay: .3
 body[data-motion="on"] .slide.active .reveal:nth-child(5) { transition-delay: .45s; }
 
 /* The geometry gate forces the final state before measuring, so
-   a measurement is never taken mid-transition. */
-body[data-gate] .reveal,
+   a measurement is never taken mid-transition.
+
+   IT MUST FREEZE MOTION, NOT ERASE GEOMETRY (Léo, 01/08). This block used
+   to carry `transform: none !important` on `*`, which killed every
+   transform on the page — including the ones that ARE the composition: a
+   tilted rule, a rotated label, an element offset by translate. The gate
+   then measured those elements upright and in the wrong place, and
+   reported them as fine. A slanted 5px bar was measured as a straight 5px
+   bar; its real footprint was 84px wide and nothing ever said so.
+   The reset is therefore scoped to `.reveal`, the only thing that
+   animates — its resting state is `transform: none` anyway, so forcing it
+   changes nothing but the timing. Everything else keeps the geometry its
+   author gave it, and the gate measures what the reader actually sees. */
 body[data-gate] *,
 body[data-gate] *::before,
 body[data-gate] *::after {
   opacity: 1 !important;
-  transform: none !important;
   transition: none !important;
   animation: none !important;
 }
+body[data-gate] .reveal { transform: none !important; }
 body[data-gate] .slide { opacity: 1 !important; }
 
 /* --- 8. print / PDF: one slide = one page -------------------- */

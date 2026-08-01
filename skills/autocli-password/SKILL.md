@@ -147,6 +147,23 @@ demander : `ssh-add -l` → `ssh-add --apple-load-keychain` → (si vide) fenêt
 `ssh-add --apple-use-keychain`. Ne remonter le problème à Léo qu'après les trois. Cf.
 [[feedback-vps-ssh-toujours-sonder]].
 
+## Piper un secret dans un CLI : `--passwordenv`, pas stdin (01/08/2026)
+
+Symptôme : `printf '%s' "$PW" | bw unlock --raw` plante en
+`ERR_USE_AFTER_CLOSE: readline was closed`, après avoir redessiné 15 fois son prompt
+« Master password ». Cause : le CLI utilise `inquirer`, qui ouvre une `readline` sur le
+TTY et **ignore un stdin déjà fermé** — piper ne « répond » pas à un prompt interactif,
+ça le laisse tourner dans le vide.
+
+Règle actionnable : **avant de piper un secret dans un CLI, cherche son option
+d'environnement.** Pour Bitwarden c'est
+`BWPW="$PW" bw unlock --passwordenv BWPW --raw`. Le secret reste en variable (donc hors
+`history` et hors `ps`, contrairement à `--password xxx`), et le CLI ne prompte pas.
+Le patron généralisable : `--*env VAR` > pipe stdin > jamais l'argument en clair.
+
+Et ne conclus pas d'un prompt qui se redessine que la saisie est mauvaise : ici la
+passphrase n'était jamais arrivée jusqu'au CLI.
+
 ## Quand tu n'es pas sûr : vérifie en lecture seule d'abord
 
 Avant une action **destructive ou irréversible** qui dépend du secret (déchiffrer-puis-réécrire un coffre, écraser un fichier, déployer), si tu as un doute sur la validité du secret, fais d'abord un **test en lecture seule** : déchiffre / authentifie sans rien écrire ni envoyer, et confirme que ça passe. Ça évite de partir dans une opération à mi-chemin avec un mauvais secret.

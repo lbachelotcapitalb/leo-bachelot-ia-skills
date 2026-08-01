@@ -39,12 +39,20 @@
       this.i = Math.max(0, Math.min(n, this.slides.length - 1));
       this.slides.forEach((s, j) => s.classList.toggle('active', j === this.i));
       if (this.counter) this.counter.textContent = `${this.i + 1} / ${this.slides.length}`;
-      const h = `#${this.i + 1}`;
+      const h = `#s${this.i + 1}`;
       if (location.hash !== h) history.replaceState(null, '', h);
     }
     next() { this.go(this.i + 1); }
     prev() { this.go(this.i - 1); }
-    _fromHash() { this.go((parseInt(location.hash.slice(1), 10) || 1) - 1); }
+
+    /* Accepte `#7` ET `#s7`. La forme `#s7` est là pour le PDF : un sommaire
+       cliquable qui survit à l'export doit viser un id RÉEL de la page (mets
+       id="s7" sur la section), sinon Chrome n'écrit aucun lien interne. La
+       forme nue `#7` reste comprise — le gate et les captures s'en servent. */
+    _fromHash() {
+      const n = parseInt(location.hash.slice(1).replace(/^s/i, ''), 10);
+      this.go((Number.isFinite(n) ? n : 1) - 1);
+    }
 
     _bindKeys() {
       addEventListener('keydown', (e) => {
