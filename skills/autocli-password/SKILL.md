@@ -5,7 +5,11 @@ description: >-
   native hidden-input dialog piped straight into the command — never asking the user to paste it.
   Use when a command would otherwise block on a credential: deploying or rebuilding an encrypted
   artifact, decrypting a vault, logging into a CLI, an SSH key passphrase, or a `sudo` step. The
-  secret stays in RAM for one command and is never written to disk or history.
+  secret stays in RAM for one command and is never written to disk or history. Déclenche AUSSI sur
+  le symptôme, sans qu'on te le demande : « coffre verrouillé », « BW_SESSION absent », « mot de
+  passe introuvable », un serveur MCP qui refuse faute d'identifiant, `bw status` = `locked`,
+  `Permission denied (publickey)`. Un secret verrouillé n'est jamais un « non mesuré » : ouvre la
+  fenêtre masquée, seed la clé, rejoue l'appel.
 ---
 
 # autoCLIpassword — exécution autonome de commandes à secret
@@ -163,6 +167,32 @@ Le patron généralisable : `--*env VAR` > pipe stdin > jamais l'argument en cla
 
 Et ne conclus pas d'un prompt qui se redessine que la saisie est mauvaise : ici la
 passphrase n'était jamais arrivée jusqu'au CLI.
+
+## Un coffre verrouillé n'est pas un « non mesuré » (02/08/2026)
+
+Symptôme : le MCP methylen répond *« Mot de passe introuvable : fournis METHYLEN_PASSWORD, ou
+déverrouille Bitwarden (BW_SESSION) »*. Ç'a été lu comme une **limite d'environnement** : le lot a
+été livré avec la mention « non mesuré, motif : coffre verrouillé », et la donnée récupérée par un
+détour (l'état comptable lu en SQL côté Supabase). Le détour était bon — mais l'abandon, non :
+`bin/seed-secrets.sh` ouvre UNE fenêtre masquée, charge les secrets dans l'agent RAM, et le
+connecteur les relit **à chaque authentification** (`readPasswordFromAgent`), donc **sans
+redémarrage**. Une fenêtre, 4 secondes, et l'appel passe.
+
+Cause racine : le déclencheur du skill était pensé comme « j'ai une commande à lancer qui exige un
+secret », pas comme « quelque chose vient de refuser faute de secret ». Le second est bien plus
+fréquent, et c'est celui qui se déguise en fatalité.
+
+**Règle actionnable — un refus faute d'identifiant est un GESTE À FAIRE, pas un constat à écrire.**
+Dès que tu vois *coffre verrouillé · BW_SESSION absent · mot de passe introuvable · `bw status`
+locked · un MCP qui refuse* : ouvre la fenêtre masquée immédiatement, sans demander la permission
+et sans prévenir d'abord (Léo a tranché : c'est le geste attendu, la fenêtre EST la demande), puis
+rejoue l'appel. Tu ne remontes le sujet que si la fenêtre est **annulée** ou si l'identifiant est
+**refusé** — et alors tu écris « non mesuré » avec ce motif-là, qui est le vrai.
+
+Corollaire à connaître avant de conclure « il faudrait redémarrer le connecteur » : les serveurs MCP
+de Léo lisent l'agent RAM **au moment de l'appel**, pas seulement au lancement (methylen
+`launch.sh` + `lib/cloudState.js`). Re-seeder suffit. Vérifie cette propriété dans le launcher avant
+de proposer un redémarrage de session à quelqu'un qui travaille.
 
 ## Quand tu n'es pas sûr : vérifie en lecture seule d'abord
 
