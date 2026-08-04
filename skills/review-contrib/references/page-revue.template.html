@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="fr">
+<!--
+  Gabarit de la page de revue destinée à LEO (skill review-contrib, §6.5).
+  C'est un TABLEAU DE BORD qu'on parcourt en diagonale, pas un rapport :
+  fond blanc, couleur réservée aux voyants, ~5 000 px de haut maximum.
+  Tout ce qui est technique (code, correctifs, fichier:ligne) va dans l'AUTRE
+  document, celui destiné au contributeur et à son IA (§9.3).
+
+  Remplir les __PLACEHOLDERS__, garder les marqueurs __IMG_xx__, puis :
+    node build-page.mjs <dossier-captures> <ce-fichier> ~/Desktop/revue-<collab>.html
+  Le script signale tout marqueur resté vide — lire sa sortie.
+
+  Voyants : .d-red bloque · .d-amb à corriger · .d-grn OK ou sans objet · .dot nu = mineur.
+-->
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>__REPO__ — la contribution de __COLLAB__ en une page</title>
+<style>
+  :root{
+    --bg:#FFFFFF; --soft:#F6F8FB; --line:#E3E8EF;
+    --tx:#0F172A; --mut:#475569; --dim:#94A3B8;
+    --red:#DC2626; --redbg:#FEF2F2; --redln:#FCA5A5;
+    --amb:#B45309; --ambbg:#FFFBEB; --ambln:#FCD34D;
+    --grn:#047857; --grnbg:#ECFDF5; --grnln:#6EE7B7;
+    --blu:#1D4ED8; --blubg:#EFF6FF;
+    --mono:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--tx);
+    font:15.5px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',Inter,system-ui,sans-serif;
+    -webkit-font-smoothing:antialiased}
+  .wrap{max-width:1080px;margin:0 auto;padding:44px 26px 80px}
+  code{font-family:var(--mono);font-size:.86em;background:var(--soft);border:1px solid var(--line);
+    padding:1px 5px;border-radius:4px;white-space:nowrap}
+
+  /* voyant */
+  .dot{display:inline-block;width:9px;height:9px;border-radius:50%;flex:none;background:#CBD5E1}
+  .d-red{background:var(--red);box-shadow:0 0 0 3px #FEE2E2}
+  .d-amb{background:#D97706;box-shadow:0 0 0 3px #FEF3C7}
+  .d-grn{background:#059669;box-shadow:0 0 0 3px #D1FAE5}
+
+  /* en-tête */
+  .kicker{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
+  h1{margin:12px 0 8px;font-size:clamp(27px,4vw,38px);line-height:1.12;font-weight:660;letter-spacing:-.025em}
+  .sub{color:var(--mut);max-width:66ch;margin:0 0 24px}
+  .verdict{display:flex;gap:13px;align-items:flex-start;padding:15px 18px;border-radius:11px;
+    border:1px solid var(--redln);background:var(--redbg);margin-bottom:30px}
+  .verdict .ttl{font-weight:680;color:var(--red);white-space:nowrap}
+  .verdict p{margin:0;color:#7F1D1D}
+
+  /* tableau de bord */
+  .board{display:grid;grid-template-columns:repeat(auto-fit,minmax(196px,1fr));gap:10px;margin-bottom:34px}
+  .sig{border:1px solid var(--line);border-radius:11px;padding:13px 15px;background:var(--bg)}
+  .sig .h{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:10px;
+    letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
+  .sig .v{margin-top:9px;font-size:15.5px;font-weight:640;line-height:1.3}
+  .sig .n{margin-top:3px;font-size:12.5px;color:var(--mut);line-height:1.45}
+  .sig.red{background:var(--redbg);border-color:var(--redln)} .sig.red .v{color:var(--red)}
+  .sig.amb{background:var(--ambbg);border-color:var(--ambln)} .sig.amb .v{color:var(--amb)}
+  .sig.grn{background:var(--grnbg);border-color:var(--grnln)} .sig.grn .v{color:var(--grn)}
+
+  /* sections */
+  h2{margin:52px 0 5px;font-size:21px;font-weight:650;letter-spacing:-.018em}
+  h2 .num{font-family:var(--mono);font-size:12px;color:var(--dim);margin-right:11px;font-weight:400}
+  .lede{color:var(--mut);margin:0 0 20px;max-width:74ch}
+
+  /* « en 30 secondes » */
+  .brief{border:1px solid var(--line);border-radius:12px;background:var(--soft);padding:2px 22px 2px 4px}
+  .brief ol{margin:0;padding:14px 0 14px 34px}
+  .brief li{margin-bottom:9px;color:var(--mut)}
+  .brief li:last-child{margin-bottom:0}
+  .brief li b{color:var(--tx);font-weight:640}
+
+  /* tableaux */
+  .tw{overflow-x:auto;border:1px solid var(--line);border-radius:12px}
+  table{border-collapse:collapse;width:100%;font-size:13.8px;background:var(--bg)}
+  th{text-align:left;padding:11px 14px;font-family:var(--mono);font-size:10px;letter-spacing:.1em;
+     text-transform:uppercase;color:var(--dim);font-weight:500;border-bottom:1px solid var(--line);
+     background:var(--soft);white-space:nowrap}
+  td{padding:11px 14px;border-bottom:1px solid var(--line);vertical-align:top;color:var(--mut)}
+  tr:last-child td{border-bottom:0}
+  td b{color:var(--tx);font-weight:640}
+  .cid{font-family:var(--mono);font-size:11.5px;color:var(--dim);white-space:nowrap}
+  .cdot{width:1%;padding-right:0}
+  .cost{font-weight:640;color:var(--red);white-space:nowrap}
+  .cost.s{color:var(--amb)} .cost.n{color:var(--dim);font-weight:500;white-space:normal}
+
+  /* glossaire */
+  .gloss{border:1px solid var(--line);border-radius:12px;overflow:hidden;margin:0}
+  .gl{display:grid;grid-template-columns:minmax(150px,215px) 1fr;border-bottom:1px solid var(--line)}
+  .gl:last-child{border-bottom:0}
+  .gl dt{padding:11px 14px;font-family:var(--mono);font-size:12px;color:var(--blu);background:var(--soft)}
+  .gl dd{margin:0;padding:11px 16px;color:var(--mut);font-size:13.8px}
+  .gl dd b{color:var(--tx);font-weight:640}
+  @media (max-width:660px){.gl{grid-template-columns:1fr}.gl dd{padding-top:0}}
+
+  /* preuve mesurée */
+  .proof{border:1px solid var(--ambln);background:var(--ambbg);border-radius:12px;padding:17px 20px}
+  .proof .calc{font-family:var(--mono);font-size:12.5px;color:#78350F;background:#FEF3C7;
+    border-radius:8px;padding:12px 14px;margin:0 0 11px;overflow-x:auto;white-space:pre;line-height:1.65}
+  .proof p{margin:9px 0 0;color:#78350F}
+
+  /* vignettes */
+  .thumbs{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));gap:11px}
+  .th{border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--bg);cursor:zoom-in}
+  .th img{display:block;width:100%;height:118px;object-fit:cover;object-position:top left}
+  .th .c{padding:8px 11px;font-size:12px;color:var(--mut);border-top:1px solid var(--line);background:var(--soft)}
+  #lb{position:fixed;inset:0;z-index:99;background:rgba(15,23,42,.9);display:none;overflow:auto;padding:26px;cursor:zoom-out}
+  #lb.on{display:block}
+  #lb img{display:block;max-width:1400px;width:100%;margin:0 auto;border-radius:9px;background:#fff}
+  #lb .hint{position:fixed;top:13px;right:18px;font-family:var(--mono);font-size:11px;color:#fff;
+    background:rgba(255,255,255,.16);padding:6px 12px;border-radius:7px}
+
+  /* décision */
+  .opts{display:grid;grid-template-columns:repeat(auto-fit,minmax(276px,1fr));gap:12px}
+  .opt{border:1px solid var(--line);border-radius:12px;padding:17px 19px;background:var(--bg)}
+  .opt.reco{border-color:var(--grnln);background:var(--grnbg)}
+  .opt .tag{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
+  .opt.reco .tag{color:var(--grn)}
+  .opt h3{margin:8px 0 7px;font-size:15.5px;font-weight:650}
+  .opt p{margin:0;color:var(--mut);font-size:13.5px}
+  .opt ul{margin:9px 0 0;padding-left:17px;font-size:13.3px}
+  .opt li{color:var(--mut);margin-bottom:4px}
+
+  .note{margin-top:26px;padding:14px 18px;border:1px solid var(--line);border-left:3px solid var(--blu);
+    border-radius:0 9px 9px 0;background:var(--blubg);color:#1E3A8A;font-size:13.8px}
+  footer{margin-top:52px;padding-top:20px;border-top:1px solid var(--line);
+    color:var(--dim);font-size:12px;font-family:var(--mono);line-height:1.9}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<div class="kicker">__REPO__ · revue de contribution · __DATE__</div>
+<h1>La contribution de __COLLAB__,<br>en une page</h1>
+<p class="sub">__N__ commits, montés tels quels et lancés sur un dossier fictif. Rien n'a été fusionné,
+rien n'a été envoyé. Le détail technique vit dans un document séparé, écrit pour l'assistant qui
+corrigera chez lui.</p>
+
+<div class="verdict">
+  <span class="dot d-red" style="margin-top:8px"></span>
+  <p><span class="ttl">__VERDICT__</span> __POURQUOI_EN_UNE_PHRASE__</p>
+</div>
+
+<!-- 4 à 6 voyants. Un état en 3 mots + une ligne d'explication. Pas de compteur brut :
+     « 23 fichiers » ne se hiérarchise pas, « 3 correctifs perdus » si. -->
+<div class="board">
+  <div class="sig grn">
+    <div class="h"><span class="dot d-grn"></span> Ce qu'il apporte</div>
+    <div class="v">__ETAT__</div><div class="n">__UNE_LIGNE__</div>
+  </div>
+  <div class="sig grn">
+    <div class="h"><span class="dot d-grn"></span> Sécurité</div>
+    <div class="v">__ETAT__</div><div class="n">__UNE_LIGNE__</div>
+  </div>
+  <div class="sig red">
+    <div class="h"><span class="dot d-red"></span> Fraîcheur de sa branche</div>
+    <div class="v">__N__ commits de retard</div><div class="n">__UNE_LIGNE__</div>
+  </div>
+  <div class="sig red">
+    <div class="h"><span class="dot d-red"></span> __DIMENSION_METIER__</div>
+    <div class="v">__ETAT__</div><div class="n">__UNE_LIGNE__</div>
+  </div>
+  <div class="sig amb">
+    <div class="h"><span class="dot d-amb"></span> Filet de tests</div>
+    <div class="v">__ETAT__</div><div class="n">__UNE_LIGNE__</div>
+  </div>
+</div>
+
+<h2><span class="num">01</span>En 30 secondes</h2>
+<div class="brief">
+<ol>
+  <li><b>__CE_QUI_EST_NEUF__</b> __pourquoi ça vaut le coup__</li>
+  <li><b>__LE_BLOCAGE_STRUCTUREL__</b> __la conséquence__</li>
+  <li><b>__LE_RISQUE_INVISIBLE__</b> __pourquoi rien ne le signale__</li>
+  <li><b>__LA_SUITE_RECOMMANDEE__</b> __en une phrase__</li>
+</ol>
+</div>
+
+<h2><span class="num">02</span>Ce que ça apporte, et ce qui ne sert plus</h2>
+<p class="lede">Le voyant sépare ce qui vaut une fusion de ce qui ne produira que du conflit — c'est
+l'information la plus utile sur une branche en retard.</p>
+
+<div class="tw">
+<table>
+<thead><tr><th class="cdot"></th><th>Ce qu'il a écrit</th><th>À quoi ça sert en clientèle</th><th>Verdict</th></tr></thead>
+<tbody>
+<tr><td class="cdot"><span class="dot d-grn"></span></td>
+  <td><b>__MODULE__</b><br><span class="cid">__N__ lignes</span></td>
+  <td>__ce que ça fait POUR LE CLIENT, pas son API__</td>
+  <td><b>À garder</b><br><span class="cid">__N__ réserves</span></td></tr>
+<tr><td class="cdot"><span class="dot d-amb"></span></td>
+  <td><b>__MODULE__</b><br><span class="cid">__N__ commits</span></td>
+  <td>__…__</td>
+  <td><b>Déjà chez nous</b><br><span class="cid">__depuis quand — à droper__</span></td></tr>
+</tbody>
+</table>
+</div>
+
+<h2><span class="num">03</span>Les mots employés dans cette revue</h2>
+<p class="lede">Une ligne par terme métier, en français. C'est ce qui rend la page relisable dans six
+mois, ou par quelqu'un d'autre.</p>
+
+<dl class="gloss">
+  <div class="gl"><dt>__TERME__</dt><dd>__une phrase — et ce qui a changé récemment, s'il y a lieu__</dd></div>
+  <div class="gl"><dt>__TERME__</dt><dd>__…__</dd></div>
+</dl>
+
+<h2><span class="num">04</span>Ce qui cloche, et ce que ça coûte</h2>
+<p class="lede">__N__ points, tous rejoués en exécutant sa branche : les montants ci-dessous sont
+mesurés, pas estimés. Voyant rouge = bloque la fusion · orange = à corriger · gris = mineur.</p>
+
+<div class="tw">
+<table>
+<thead><tr><th class="cdot"></th><th>Réf.</th><th>Ce qui se passe</th><th>Ce que ça coûte</th></tr></thead>
+<tbody>
+<tr><td class="cdot"><span class="dot d-red"></span></td><td class="cid">B1</td>
+  <td>__une phrase SANS jargon : ni nom de fonction, ni fichier:ligne, ni code__</td>
+  <td><span class="cost">__le montant ou le risque__</span> __la conséquence concrète__</td></tr>
+<tr><td class="cdot"><span class="dot d-amb"></span></td><td class="cid">I1</td>
+  <td>__…__</td>
+  <td><span class="cost s">__…__</span> __…__</td></tr>
+<tr><td class="cdot"><span class="dot"></span></td><td class="cid">M1</td>
+  <td>__…__</td>
+  <td><span class="cost n">__…__ Cosmétique.</span></td></tr>
+</tbody>
+</table>
+</div>
+
+<h2><span class="num">05</span>La démonstration : __LE_DEFAUT_PROUVE_AU_BANC__</h2>
+<p class="lede">__ce que la revue de code affirmait, et ce que le banc a montré__</p>
+
+<div class="proof">
+  <div class="calc">__entrées du dossier fictif__
+
+Affiché    __…__
+Attendu    __…__</div>
+  <p><b>__la cause, en une phrase__</b> __l'explication métier__</p>
+  <p><b>Ce que ça coûte.</b> __en euros, et pourquoi c'est pire que ça en a l'air__</p>
+</div>
+
+<h2><span class="num">06</span>Sa branche, en fonctionnement</h2>
+<p class="lede">Captures réelles, prises sur sa branche lancée en local sur un dossier fictif — pas des
+maquettes. Cliquer pour agrandir.</p>
+
+<div class="thumbs">
+  <div class="th"><img alt="__ALT__" src="__IMG_01__"><div class="c">__légende courte__</div></div>
+  <div class="th"><img alt="__ALT__" src="__IMG_02__"><div class="c">__légende courte__</div></div>
+  <div class="th"><img alt="__ALT__" src="__IMG_03__"><div class="c">__légende courte__</div></div>
+</div>
+
+<h2><span class="num">07</span>Décision</h2>
+<p class="lede">__où est vraiment le problème — souvent pas dans la qualité du code__</p>
+
+<div class="opts">
+  <div class="opt reco">
+    <div class="tag">Recommandé</div>
+    <h3>__OPTION__</h3><p>__pourquoi__</p>
+    <ul><li>__…__</li></ul>
+  </div>
+  <div class="opt">
+    <div class="tag">Repli rapide</div>
+    <h3>__OPTION__</h3><p>__pourquoi__</p>
+    <ul><li>__…__</li></ul>
+  </div>
+  <div class="opt">
+    <div class="tag">Ménage</div>
+    <h3>__OPTION__</h3><p>__pourquoi__</p>
+    <ul><li>__…__</li></ul>
+  </div>
+</div>
+
+<div class="note">
+  <b>Ce qui part chez __COLLAB__ — et rien n'est encore parti.</b> Un document séparé lui est destiné,
+  ainsi qu'à l'assistant qui corrigera chez lui : pour chacun des __N__ points, le code fautif, la
+  correction, le cas de reproduction chiffré, le test à écrire, et surtout <b>ce qu'il ne peut pas
+  deviner depuis son fork</b>. Un registre garde les références <code>B1</code>…<code>M1</code> stables
+  d'un échange à l'autre. Le message d'accompagnement est rédigé et attend ton feu vert.
+</div>
+
+<footer>
+  Sa branche __SHA__ · __N__ commits d'avance, __N__ de retard sur la nôtre (__SHA__) — re-mesuré le __DATE__, ce chiffre périme en heures.<br>
+  Banc de démonstration isolé : aucune base réelle accessible, enregistrement automatique coupé, dossier client entièrement fictif.<br>
+  Tous les montants de la colonne « ce que ça coûte » ont été obtenus en exécutant sa branche, pas estimés.<br>
+  Rien n'a été fusionné, rien n'a été poussé, aucun message n'a été envoyé.
+</footer>
+
+</div>
+
+<div id="lb"><div class="hint">Échap ou clic pour fermer</div><img alt=""></div>
+<script>
+  (function () {
+    var lb = document.getElementById('lb'), big = lb.querySelector('img');
+    document.querySelectorAll('.th img').forEach(function (im) {
+      im.addEventListener('click', function () {
+        big.src = im.src; big.alt = im.alt; lb.classList.add('on');
+        lb.scrollTop = 0; document.body.style.overflow = 'hidden';
+      });
+    });
+    function close() { lb.classList.remove('on'); document.body.style.overflow = ''; }
+    lb.addEventListener('click', close);
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') close(); });
+  })();
+</script>
+</body>
+</html>
