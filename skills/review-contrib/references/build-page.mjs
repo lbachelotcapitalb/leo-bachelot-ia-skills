@@ -56,7 +56,7 @@ fichiers.forEach((f, i) => {
 });
 
 // Un marqueur oublié laisse une image cassée dans un document qu'on va donner à
-// Léo : on le signale fort plutôt que de le laisser passer.
+// On le signale fort plutôt que de le laisser passer.
 const restants = [...new Set(html.match(/__IMG_\d+__/g) || [])];
 const placeholders = [...new Set(html.match(/__[A-ZÉÈÀÇ_]{3,}__/g) || [])].filter((p) => !/^__IMG_/.test(p));
 

@@ -5,7 +5,7 @@ description: >-
   roadmap autonome multi-steps sur le VPS avec auto-continuation. Utilise-le quand Leo veut :
   déléguer/reprendre le travail ailleurs (« reprends sur le VPS », « bascule sur ma machine ») ;
   lancer une roadmap autonome sur le VPS depuis le desktop (« lance la roadmap sur le VPS »,
-  « exécute ces steps en autonomie », session visible dans code.capitalb.fr) ; ou faire un état
+  « exécute ces steps en autonomie », session visible dans code.<ton-domaine>) ; ou faire un état
   des lieux des sessions Claude du VPS (« montre-moi les sessions du VPS », « tableau des sessions »).
   Softcodé via .claude/handoff.json — marche pour tout couple de machines partageant le même remote.
 ---
@@ -135,7 +135,7 @@ Tout passe par `scripts/handoff.mjs` (Node, zéro dépendance).
 Une grosse tâche (refactor en N étages) sature vite la fenêtre de contexte d'une seule session.
 Ce mode l'exécute sur le VPS en **auto-continuation** : on itère la roadmap **ici (desktop)**, on la
 lance sur le VPS, et chaque session y fait **UN step** puis **relance une session fraîche** pour le
-suivant. Chaque passe apparaît comme une session dans **code.capitalb.fr** (cloudcode lit
+suivant. Chaque passe apparaît comme une session dans **code.<ton-domaine>** (cloudcode lit
 `~/.claude/projects`) → Léo suit depuis son téléphone et n'intervient qu'aux **frontières** (décisions).
 
 Deux choix de conception assumés (Léo) :

@@ -45,7 +45,7 @@ render-to-PNG check before handing back. Theme-agnostic.
 - **Use it when** you're creating a pitch/deck, or fixing slides that feel empty, repetitive, or inconsistent.
 - **Skip it when** you only need to *read/extract* from a `.pptx` (the base `pptx` skill covers that).
 - **Needs** Python (`python-pptx`, Pillow); `rsvg-convert` for icons; LibreOffice for the faithful render.
-- [README](skills/deck-builder/README.md) · [SKILL.md](skills/deck-builder/SKILL.md)
+- [SKILL.md](skills/deck-builder/SKILL.md)
 
 ### review-contrib
 **Audit, test and merge a collaborator's commit / branch / PR safely — before it touches `main`.** A
@@ -55,7 +55,7 @@ sub-agent, manually test, then merge only on approval.
 - **Use it when** you're the **maintainer** adopting an incoming contribution and `main` is production.
 - **Skip it when** you're the one *writing* the contribution → use [contribuer](#contribuer) instead.
 - **Needs** `git` (2.38+) and the `gh` CLI.
-- [README](skills/review-contrib/README.md) · [SKILL.md](skills/review-contrib/SKILL.md)
+- [SKILL.md](skills/review-contrib/SKILL.md)
 
 ### contribuer
 **Prepare a clean, adoptable PR to a repo you don't maintain.** The contributor-side mirror of
@@ -75,7 +75,7 @@ environment. The secret stays in RAM — never in the chat, shell history, or on
 - **Use it when** a single command blocks on a credential (decrypt a vault, an SSH passphrase, a `sudo` step).
 - **Skip it when** you need many secrets at runtime / to replace `.env` → use [vault-secrets](#vault-secrets).
 - **Needs** Bash + Node (zero external deps). macOS/Linux dialogs, TTY fallback.
-- [README](skills/autocli-password/README.md) · [SKILL.md](skills/autocli-password/SKILL.md)
+- [SKILL.md](skills/autocli-password/SKILL.md)
 
 ### vault-secrets
 **Choose & configure a queryable secrets manager, and use it in place of `.env`.** A provider-agnostic
@@ -95,7 +95,7 @@ target diagnostic (`check`). Softcoded per repo via `.claude/handoff.json`.
 - **Use it when** you want to continue (or delegate) work on a VPS / another workstation.
 - **Skip it when** both ends already share a live workspace.
 - **Needs** Node (zero deps) + git/SSH on both machines.
-- [README](skills/handoff/README.md) · [SKILL.md](skills/handoff/SKILL.md)
+- [SKILL.md](skills/handoff/SKILL.md)
 
 ---
 
@@ -115,8 +115,10 @@ description. Some skills reference each other (e.g. `handoff` and `vault-secrets
 
 ## Notes
 
-- **Genericized.** Extracted from a personal setup; any reference to private infra (vault names,
-  hosts, project conventions) was replaced with neutral placeholders. No personal data remains.
+- **Genericized.** Extracted from a personal setup: third-party names, private hosts, home paths
+  and credentials are stripped — a check in the sync script blocks publication if any reappear.
+  A few internal project names survive **as examples** inside walkthroughs; they are placeholders
+  you can ignore, not something you need to have.
 - **Language.** Some skills are written in French, some in English — the `description` is what Claude
   matches on, and it operates fine in either language.
 - **Platform.** Mostly cross-platform; a few use macOS-first native dialogs / the LibreOffice render

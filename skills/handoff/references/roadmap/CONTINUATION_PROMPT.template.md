@@ -60,7 +60,7 @@ tu **pousses** à la fin de chaque step. On travaille avec le git DISTANT à cha
 - Dans le doute sur un chiffre : tu le MESURES (harnais/outil), tu ne devines pas. Sur une règle : frontière.
 - Respecte les conventions du repo (CLAUDE.md).
 
-## Frontière = décision de Léo (il regarde depuis son téléphone, via code.capitalb.fr)
+## Frontière = décision du mainteneur (il regarde depuis son téléphone, via l'UI web)
 Quand un step demande une décision (choix de modèle, ambiguïté, écart non trivial, ou un item marqué
 FRONTIÈRE dans PROGRESS.md) : **NE code pas, N'appelle PAS next.sh**. Écris un TABLEAU markdown
 synthétique et lisible sur mobile dans DECISIONS_PENDING.md — `| # | Décision | Options | Reco | Enjeu |`,
