@@ -194,6 +194,26 @@ de Léo lisent l'agent RAM **au moment de l'appel**, pas seulement au lancement 
 `launch.sh` + `lib/cloudState.js`). Re-seeder suffit. Vérifie cette propriété dans le launcher avant
 de proposer un redémarrage de session à quelqu'un qui travaille.
 
+## `ask-secret.sh` n'a PAS de `--help` — ne le sonde jamais (06/08/2026)
+
+**Symptôme** : `ask-secret.sh --help` a ouvert une vraie fenêtre de saisie sur l'écran de Léo ; il a
+tapé un secret, le script l'a imprimé sur **stdout**, donc dans la sortie d'outil — et dans la
+transcription de la session. Le secret a fui parce qu'il a été *demandé*, pas parce qu'il était stocké.
+
+**Cause racine** : le script n'interprète aucun drapeau. `$1` est le **texte du prompt**, `$2` le titre,
+`$3` la clé de cache. `--help` est donc un prompt comme un autre → dialogue → impression sur stdout.
+C'est son contrat (§ « Le secret est écrit UNIQUEMENT sur stdout »), pas un bug.
+
+**Règles** :
+- **Ne lance JAMAIS `ask-secret.sh` pour découvrir son usage.** Son mode d'emploi est l'en-tête du
+  fichier : `sed -n '1,20p' scripts/ask-secret.sh`. Lire, jamais exécuter.
+- **Ne lance JAMAIS `ask-secret.sh` nu**, c'est-à-dire hors d'une substitution `$(...)` qui alimente
+  immédiatement une variable d'environnement. Nu, sa sortie EST le secret en clair dans la transcription.
+- Corollaire général : **un script dont le contrat est d'imprimer un secret sur stdout ne se sonde pas.**
+  Avant d'exécuter un outil inconnu du dossier `scripts/` d'un skill à secrets, lis-le.
+- Si la fuite a eu lieu : le dire à Léo **immédiatement et en clair**, ne pas ré-afficher la valeur, et
+  **faire tourner le secret** — une valeur passée dans une transcription est compromise, point.
+
 ## Quand tu n'es pas sûr : vérifie en lecture seule d'abord
 
 Avant une action **destructive ou irréversible** qui dépend du secret (déchiffrer-puis-réécrire un coffre, écraser un fichier, déployer), si tu as un doute sur la validité du secret, fais d'abord un **test en lecture seule** : déchiffre / authentifie sans rien écrire ni envoyer, et confirme que ça passe. Ça évite de partir dans une opération à mi-chemin avec un mauvais secret.
