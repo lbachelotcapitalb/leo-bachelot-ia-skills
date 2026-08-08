@@ -3,11 +3,11 @@
   "protectedBranches": ["main", "master", "production"],
   "noDeployToBranches": ["main", "master"],
   "handoffFile": "HANDOFF.md",
-  "defaultRemote": "hetzner",
+  "defaultRemote": "vps",
   "remotes": {
-    "hetzner": {
+    "vps": {
       "ssh": "user@vps.example.com",
-      "path": "~/comptaleo",
+      "path": "~/mon-projet",
       "claudeBin": "claude",
       "resumePrompt": "Lis HANDOFF.md à la racine du repo et reprends le travail décrit. Vérifie le build avant de continuer."
     }
