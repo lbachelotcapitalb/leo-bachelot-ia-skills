@@ -9,10 +9,16 @@
 // Sous-commandes :
 //   node secret-agent.mjs serve              → démarre le daemon (auto-spawné par `set` au besoin)
 //   node secret-agent.mjs get   <clé>        → imprime le secret sur stdout (exit 0) | exit 3 si absent
+//   node secret-agent.mjs has   <clé>        → « HIT <ttl_restant_s> » | « MISS » — JAMAIS le secret
+//   node secret-agent.mjs keys               → « clé<TAB>ttl_restant_s » par ligne — JAMAIS les secrets
 //   echo -n secret | … set <clé> <ttl_sec>   → mémorise (ttl plafonné 86400 ; 0 = ne rien garder)
 //   node secret-agent.mjs drop  <clé>        → oublie une clé
 //   node secret-agent.mjs flush              → oublie tout (extinction)
 //   node secret-agent.mjs status             → nombre de secrets en mémoire
+//
+// `has` et `keys` sont les SEULES sondes autorisées avant d'ouvrir une fenêtre : elles répondent
+// « est-ce déjà en RAM ? » sans jamais faire transiter la valeur (cf. incident 06/08 : un `get` nu
+// imprime le secret dans la transcription).
 //
 // Le secret transite en base64 sur la socket (pas de souci de délimiteur) et n'est JAMAIS passé
 // en argv (lu sur stdin pour `set`, imprimé sur stdout pour `get`). Jamais loggé.
@@ -58,6 +64,15 @@ function serve() {
         const v = store.get(key);
         if (v && v.expiry > Date.now()) reply = 'OK\t' + b64e(v.secret);
         else { if (v) store.delete(key); reply = 'MISS'; }
+      } else if (op === 'HAS') {                                  // présence seule : jamais la valeur
+        const v = store.get(key);
+        if (v && v.expiry > Date.now()) reply = 'OK\t' + Math.floor((v.expiry - Date.now()) / 1000);
+        else { if (v) store.delete(key); reply = 'MISS'; }
+      } else if (op === 'KEYS') {                                 // inventaire : noms + TTL, jamais la valeur
+        const now = Date.now();
+        const rows = [];
+        for (const [k, v] of store) if (v.expiry > now) rows.push(k + ' ' + Math.floor((v.expiry - now) / 1000));
+        reply = 'OK\t' + rows.join(',');   // ni saut de ligne ni tabulation : le protocole est en lignes
       } else if (op === 'SET') {
         const ttl = Math.min(Math.max(parseInt(ttlStr, 10) || 0, 0), MAX_TTL);
         if (ttl > 0 && payload) store.set(key, { secret: b64d(payload), expiry: Date.now() + ttl * 1000 });
@@ -105,6 +120,26 @@ async function client(cmd, args) {
       if (reply.startsWith('OK\t')) { process.stdout.write(b64d(reply.slice(3))); process.exit(0); }
       process.exit(3);
     }
+    if (cmd === 'has') {                                       // sonde de PRESENCE : jamais la valeur
+      let reply;
+      try { reply = await send('HAS\t' + (args[0] || '')); } catch { process.stdout.write('MISS\n'); process.exit(3); }
+      if (reply.startsWith('OK\t')) { process.stdout.write('HIT ' + reply.slice(3) + 's\n'); process.exit(0); }
+      if (reply === 'ERR') {                                    // daemon anterieur a HAS : on retombe sur GET
+        let g; try { g = await send('GET\t' + (args[0] || '')); } catch { g = 'MISS'; }
+        // la valeur reste dans CE process : on n'imprime que la presence.
+        if (g.startsWith('OK\t')) { process.stdout.write('HIT (ttl inconnu : daemon ancien)\n'); process.exit(0); }
+      }
+      process.stdout.write('MISS\n'); process.exit(3);
+    }
+    if (cmd === 'keys') {                                      // inventaire : noms + TTL, jamais les valeurs
+      let reply;
+      try { reply = await send('KEYS'); } catch { process.stdout.write('(aucun daemon)\n'); process.exit(3); }
+      if (reply === 'ERR') { process.stdout.write('(daemon anterieur a KEYS - sonde cle par cle avec `has <cle>`)\n'); process.exit(3); }
+      const rows = reply.startsWith('OK\t') ? reply.slice(3).split(',').filter(Boolean) : [];
+      if (!rows.length) { process.stdout.write('(vide)\n'); process.exit(3); }
+      for (const r of rows) { const [k, t] = r.split(' '); process.stdout.write(k + '\t' + t + 's\n'); }
+      process.exit(0);
+    }
     if (cmd === 'set') {
       const payload = ['SET', args[0] || '', args[1] || '0', b64e(fs.readFileSync(0, 'utf8'))].join('\t');
       try { await send(payload); }
@@ -119,7 +154,7 @@ async function client(cmd, args) {
       catch { process.stdout.write('0\n'); }
       process.exit(0);
     }
-    process.stderr.write('usage: secret-agent.mjs serve|get|set|drop|flush|status\n');
+    process.stderr.write('usage: secret-agent.mjs serve|get|has|keys|set|drop|flush|status\n');
     process.exit(2);
   } catch (e) { process.stderr.write('secret-agent: ' + (e?.message || e) + '\n'); process.exit(2); }
 }

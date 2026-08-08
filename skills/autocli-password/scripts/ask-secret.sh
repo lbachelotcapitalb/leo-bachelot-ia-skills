@@ -4,10 +4,12 @@
 # Usage :   SECRET="$(scripts/ask-secret.sh "Passphrase karto" "karto · rebuild")"
 #           CARTO_PASS="$SECRET" node karto-sync.mjs rebuild ; unset SECRET CARTO_PASS
 #
-# 3ᵉ argument optionnel = CLÉ DE CACHE. S'il est fourni ET que l'utilisateur choisit une durée
-# dans le sélecteur, le secret est gardé en RAM (agent éphémère, ≤ 1 h) et les appels suivants
-# avec la même clé ne rouvrent PAS de fenêtre. Sans 3ᵉ argument → comportement historique exact
-# (une fenêtre, aucune mémorisation). Défaut du sélecteur = « Aucune » : opt-in strict.
+# 3ᵉ argument = CLÉ DE CACHE, OBLIGATOIRE pour tout secret maître réutilisable (karto, bw-master,
+# vps-sudo…). S'il est fourni, le secret est gardé en RAM (agent éphémère, plafond 24 h) et les
+# appels suivants avec la MÊME clé ne rouvrent PAS de fenêtre. Le sélecteur de durée est alors
+# pré-positionné sur 24 heures (Léo peut redescendre, ou choisir « Aucune »).
+# Sans 3ᵉ argument → une fenêtre à CHAQUE appel, zéro mémorisation, et un avertissement sur stderr :
+# c'est la cause n°1 des re-demandes (mesuré 08/08 : 359 invocations sur 815 sans clé).
 #
 # Le secret est écrit UNIQUEMENT sur stdout (pour substitution `$(...)`). Rien n'est
 # stocké sur DISQUE, journalisé, ni affiché à l'écran. Annulation / saisie vide -> sortie 1, ce
@@ -26,10 +28,16 @@ AGENT="$SELF_DIR/secret-agent.mjs"
 HAVE_NODE=0; command -v node >/dev/null 2>&1 && HAVE_NODE=1
 IS_MAC=0; [ "$(uname -s)" = "Darwin" ] && IS_MAC=1
 CACHEABLE=0; [ -n "$CACHE_KEY" ] && [ "$HAVE_NODE" = 1 ] && [ -f "$AGENT" ] && CACHEABLE=1
+if [ -z "$CACHE_KEY" ]; then
+  echo "ask-secret: AUCUNE clé de cache (3ᵉ argument) — cette saisie ne sera PAS mémorisée," >&2
+  echo "            et la prochaine commande rouvrira une fenêtre. Passe une clé stable" >&2
+  echo "            (karto | bw-master | vps-sudo | …) sauf si le secret est jetable." >&2
+fi
 
 # --- 1) cache hit : aucune fenêtre, on rend le secret mémorisé -------------
 if [ "$CACHEABLE" = 1 ]; then
   if cached="$(node "$AGENT" get "$CACHE_KEY" 2>/dev/null)" && [ -n "$cached" ]; then
+    echo "ask-secret: cache RAM HIT (clé « $CACHE_KEY ») — aucune fenêtre ouverte." >&2
     printf '%s' "$cached"; exit 0
   fi
 fi
@@ -38,7 +46,7 @@ fi
 ask_duration() {
   osascript \
     -e 'set opts to {"Aucune (ne pas mémoriser)","5 minutes","15 minutes","30 minutes","1 heure","4 heures","8 heures","24 heures"}' \
-    -e 'set r to choose from list opts with title "Mémorisation (RAM)" with prompt "Garder ce secret en mémoire vive pour…  (défaut : aucune)" default items {"Aucune (ne pas mémoriser)"} OK button name "OK" cancel button name "Annuler"' \
+    -e 'set r to choose from list opts with title "Mémorisation (RAM)" with prompt "Garder ce secret en mémoire vive pour…  (défaut : 24 heures)" default items {"24 heures"} OK button name "OK" cancel button name "Annuler"' \
     -e 'if r is false then return "0"' \
     -e 'set c to item 1 of r' \
     -e 'if c is "5 minutes" then return "300"' \
@@ -78,6 +86,7 @@ try
   lbl's setSelectable:false
   set popup to current application's NSPopUpButton's alloc()'s initWithFrame:(current application's NSMakeRect(150, 0, 180, 26))
   (popup's addItemsWithTitles:durTitles)
+  (popup's selectItemAtIndex:7) -- defaut = 24 heures (cle de cache fournie = secret maitre reutilisable)
   (theView's addSubview:pwd)
   (theView's addSubview:lbl)
   (theView's addSubview:popup)

@@ -64,15 +64,18 @@ fenêtres (`display dialog` puis `choose from list`). Sans clé de cache : une s
 classique, comme avant.
 
 Garde-fous non négociables :
-- **Défaut = aucune mémorisation.** Le menu de durée est sur « Aucune ». On ne garde un secret que
-  si Leo choisit explicitement une durée. Sans 3ᵉ argument (clé de cache), `ask-secret.sh` se
-  comporte exactement comme avant : une fenêtre, zéro mémorisation.
+- **Défaut = 24 h dès qu'une clé de cache est fournie** (changé le 08/08/2026, voir la section
+  « Pourquoi Léo est re-sollicité »). Le menu s'ouvre sur « 24 heures » ; Léo peut redescendre ou
+  choisir « Aucune ». Sans 3ᵉ argument, `ask-secret.sh` ne mémorise rien **et le dit sur stderr** —
+  ce n'est pas un mode normal, c'est le signe que tu as oublié la clé.
 - **Plafond 24 h, en dur**, dans le daemon (impossible de demander plus). Ladder : 5 min → 24 h.
-  Au-delà de quelques heures, l'exposition est réelle (secret maître en RAM toute la journée) :
-  réserve les longues durées aux grosses journées d'allers-retours, pas en continu.
+  L'exposition d'un secret maître en RAM toute la journée est réelle — mais Léo a tranché (08/08) :
+  il préfère ce risque, borné et sans disque, à des dizaines de fenêtres par jour. Le geste de
+  réduction, c'est le **flush** quand il s'éloigne, pas une durée courte par défaut.
 - **RAM seulement** : aucune écriture disque du secret, jamais.
-- **Périmètre** : seulement les secrets maîtres réutilisables — clés `karto` et `bw-master`. Pas
-  les valeurs jetables (un mot de passe qu'on dépose une fois ne se met pas en cache).
+- **Périmètre** : seulement les secrets maîtres réutilisables — voir le **registre des clés
+  canoniques** ci-dessous. Pas les valeurs jetables (un mot de passe qu'on dépose une fois ne se met
+  pas en cache).
 - **Bouton panique** : `node ~/.claude/skills/autocli-password/scripts/secret-agent.mjs flush`
   oublie tout immédiatement (et éteint le daemon). À proposer si Leo s'éloigne de sa machine.
 - **Anti-typo, mais ciblé** (leçon 16/07/2026) : ne `drop`/reprompte QUE sur une **preuve positive
@@ -89,18 +92,77 @@ Garde-fous non négociables :
   maître plusieurs fois (récup + rebuild + deploy…), fournis la **clé de cache** et suggère une
   durée dès la 1ʳᵉ fenêtre → UNE seule saisie pour toute la séquence, au lieu de N fenêtres.
 
+## Pourquoi Léo est re-sollicité alors que le secret est en RAM (08/08/2026)
+
+**Symptôme, dit par Léo** : « je mets 24 h et tu me redemandes quand même — soit ce n'est pas
+vraiment en RAM, soit tu ne vérifies pas ». Les deux hypothèses étaient fausses, et la vraie cause
+est pire : **le mécanisme marchait, mais on le contournait presque une fois sur deux.**
+
+**Mesure** (extraction des invocations réelles dans les transcriptions `~/.claude/projects`) :
+
+| 3ᵉ argument passé à `ask-secret.sh` | invocations | effet |
+|---|---:|---|
+| **aucune clé** (2 arguments) | **359** | fenêtre à chaque fois, **et rien n'est mémorisé** |
+| `karto` | 328 | cache utilisable |
+| `bw-master` | 102 | cache utilisable |
+| `vps-sudo` / `vps` / `ssh-key` / `ssh-vps` | 9 / 6 / 3 / 1 | **4 noms pour 2 secrets** → aucun partage |
+
+**Causes racines, par ordre de poids :**
+1. **Clé de cache omise (44 % des appels).** Sans 3ᵉ argument, `ask-secret.sh` ne consulte même pas
+   le cache et ne stocke rien : la saisie de 9 h 05 ne sert pas à celle de 9 h 07.
+2. **Dérive des noms de clés.** `vps` ≠ `vps-sudo` ≠ `ssh-key` : le secret était bien en RAM, sous
+   un autre nom, donc invisible.
+3. **Le sélecteur de durée était sur « Aucune » par défaut**, et la touche Entrée valide OK sans
+   toucher au menu → saisie correcte, mémorisation nulle, sans que rien ne le signale.
+4. **Aucune sonde lisible.** `get` est la seule façon de savoir si une clé est là — or `get`
+   **imprime le secret** (incident 06/08). Donc « vérifier avant de demander » n'était pas outillé.
+
+**Corrigé le 08/08 :** défaut du menu = 24 h quand une clé est fournie · avertissement stderr quand
+la clé manque · témoin stderr `cache RAM HIT` quand aucune fenêtre ne s'ouvre · nouvelles
+sous-commandes `has` et `keys`.
+
+### Registre des clés canoniques — n'en invente jamais une nouvelle
+
+| clé | secret | usages typiques |
+|---|---|---|
+| `karto` | passphrase du coffre karto | `karto-sync.mjs rebuild`, deploy, `vault-add/open` |
+| `bw-master` | mot de passe maître Bitwarden | `bw unlock --passwordenv`, `bw-get.mjs`, seed MCP |
+| `vps-sudo` | mot de passe sudo du VPS b-capital | toute commande privilégiée sur le VPS |
+| `mac-admin` | mot de passe admin macOS | `sudo` local (disques, `dd`, `fsck`) |
+
+Avant d'introduire une 5ᵉ clé, vérifie qu'aucune de celles-ci ne désigne déjà le même secret. Une
+clé nouvelle = une fenêtre de plus pour Léo.
+
+### Le réflexe, dans cet ordre
+
+1. **Sonder, jamais deviner** — `node "$SKILL/scripts/secret-agent.mjs" has karto`
+   → `HIT <ttl>s` (exit 0) ou `MISS` (exit 3). **La valeur ne sort jamais.**
+   `… keys` liste les clés en mémoire avec leur TTL restant (toujours sans les valeurs).
+2. **Toujours passer la clé de cache**, même pour un appel unique — un appel unique le reste
+   rarement, et sans clé la saisie est perdue pour la suite de la session.
+3. **Ne jamais annoncer « le secret est en RAM »** sans avoir lancé `has` : c'est exactement
+   l'affirmation non mesurée que Léo a prise en défaut.
+
+⛔ **N'utilise JAMAIS `get` pour tester une présence** : il écrit le secret sur stdout, donc dans la
+transcription. `has` existe pour ça.
+
 ## Comment lancer une commande (helper fourni)
 
 Utilise le helper `scripts/ask-secret.sh` — il affiche la bonne fenêtre selon l'OS (macOS `osascript`, Linux `zenity`/`systemd-ask-password`, repli terminal `read -rs`) et imprime le secret saisi sur stdout. Annulation ou saisie vide → il sort en erreur, donc la commande appelante avorte proprement (rien ne se passe).
 
-Patron général (le `&&` garantit que rien ne tourne si l'utilisateur annule) :
+Patron général (le `&&` garantit que rien ne tourne si l'utilisateur annule). **Le 3ᵉ argument — la
+clé de cache — fait partie du patron : ne le retire que pour un secret authentiquement jetable.**
 
 ```bash
 SKILL=~/.claude/skills/autocli-password
-SECRET="$("$SKILL/scripts/ask-secret.sh" "Motif clair de la demande" "Titre fenêtre")" \
+node "$SKILL/scripts/secret-agent.mjs" has <clé>   # HIT/MISS, sans jamais sortir la valeur
+SECRET="$("$SKILL/scripts/ask-secret.sh" "Motif clair de la demande" "Titre fenêtre" <clé>)" \
   && VAR_ATTENDUE_PAR_L_OUTIL="$SECRET" <commande qui lit cette variable> \
   ; unset SECRET
 ```
+
+Sur un HIT, `ask-secret.sh` n'ouvre **aucune** fenêtre et écrit `cache RAM HIT` sur stderr : ce
+témoin dans ta sortie d'outil est la preuve que Léo n'a rien eu à taper.
 
 **3ᵉ argument optionnel = clé de cache RAM** (voir l'exception bornée ci-dessus). Fournis-le
 seulement pour un secret maître réutilisable, avec une clé stable (`karto`, `bw-master`) :
